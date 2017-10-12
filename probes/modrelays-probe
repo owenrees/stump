@@ -224,6 +224,11 @@ acquire_lock () {
 	exec with-lock-ex $lock_mode "$lockfile" "$0" "$mode" "$@"
 }
 
+do-report-log () {
+	# implicitly uses $outcome, $reported etc. - see maybe-report
+	echo "$outcome" >"$attempt"/reported
+}
+
 maybe-report () {
 	local outcome=$1
 
@@ -240,7 +245,7 @@ maybe-report () {
 	if [ "x$outcome" = "x$reported" ]; then return; fi
 
 	if [ x"$outcome" = x"ok" ] && [ x"$reported" = x ]; then
-		echo ok >"$attempt/reported"
+		do-report-log
 		return
 	fi
 
@@ -320,7 +325,7 @@ END
 END
 
 	/usr/sbin/sendmail -odb -oem -oee -t <"$email"
-	echo "$outcome" >"$attempt"/reported
+	do-report-log
 }
 
 mode_report () {
