@@ -21,6 +21,7 @@ esac
 
 id=$(date +%s)_$$
 statedir=probes/probes
+logdir=probes/log
 lockfile=$statedir/.lock
 
 fail () {
@@ -226,6 +227,10 @@ acquire_lock () {
 
 do-report-log () {
 	# implicitly uses $outcome, $reported etc. - see maybe-report
+	mkdir -p $logdir
+	printf >>$logdir/log "%s: %s%s %s (%s)\n" \
+		"$(date --iso-8601=seconds | sed 's/T/ /')" \
+		"$outcome" "${reported:+ previously=}$reported" "$info" "$message"
 	echo "$outcome" >"$attempt"/reported
 }
 
