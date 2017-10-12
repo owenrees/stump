@@ -231,7 +231,7 @@ maybe-report () {
 	if ! [ -e "$attempt/$outcome" ]; then return; fi
 	found_to_report=true
 
-	read <"$attempt/$outcome" message
+	message=$(cat "$attempt/$outcome")
 
 	local reported
 	if [ -e "$attempt/reported" ]; then
