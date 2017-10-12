@@ -244,13 +244,13 @@ maybe-report () {
 	fi
 	if [ "x$outcome" = "x$reported" ]; then return; fi
 
+	local info=${attempt##*/}
+	info=${info//,/ }
+
 	if [ x"$outcome" = x"ok" ] && [ x"$reported" = x ]; then
 		do-report-log
 		return
 	fi
-
-	local info=${attempt##*/}
-	info=${info//,/ }
 
 	delim=`od -N 50 -An -x -w50 </dev/urandom`
 	delim=${delim// /}
