@@ -306,9 +306,68 @@ sub readMessage {
   open( TMPFILE, "> $TmpFile" ) or die $!;
 
   $IsBody = 0;
-  
-  while( <> ) {
-#print IWJL "SbRm $_\n";
+
+  my @unfolded;
+  my $readahead = '';
+
+  our $warnings=0;
+  my $warning = sub {
+    sprintf "X-STUMP-Warning-%d: %s\n", $warnings++, $_[0];
+  };
+
+#open TTY, ">/home/webstump/t";
+  for (;;) {
+#print TTY "=| $IsBody | $readahead ...\n";
+    if (!defined $readahead) {
+      # we got EOF earlier;
+      last;
+    }
+    if (length $readahead) {
+      $_ = $readahead;
+      $readahead = '';
+    } else {
+      $_ = <>;
+      last unless defined;
+    }
+    if (!$IsBody) {
+      # right now there is no readahead, since we just consumed it into $_
+      if ($_ !~ m/^\r?\n$/) { # blank line ? no...
+	$readahead = <>;
+	if (defined $readahead && $readahead =~ m/^[ \t]/) {
+	  # this is a continuation, keep stashing
+	  $readahead = $_.$readahead;
+	  next;
+	}
+	# OK, $readahead is perhaps:
+	#   - undef: we got eof
+	#   - empty line: signalling end of (these) headers
+	#   - start of next header
+	# In these cases, keep that in $readahead for now,
+	# and process the previous header, which is in $_.
+	# But, first, a wrinkle ...
+	push @unfolded, (m/^[^:]+:/ ? $& : '????')
+	    if s/\n(?=.)/ /g;
+	if (length $_ > 505) { #wtf
+	  $_ = substr($_, 0, 500);
+	  $_ =~ s/\n?$/\n/;
+	  $readahead = $_;
+	  $_ = $warning->("Next header truncated!");
+	}
+      } else {
+	# $_ is empty line at end of headers
+	# (and, there is no $readahead)
+	if (@unfolded) {
+	  # insert this warning into the right set of headers
+	  $readahead = $_;
+	  $_ = $warning->("Unfolded headers @unfolded");
+	  @unfolded = ();
+	}
+      }
+      # Now we have in $_ either a complete header, unfolded,
+      # or the empty line at the end of headers
+    } 
+#print TTY "=> $IsBody | $readahead | $_ ...\n";
+
     $Body .= $_;
 
     if( !$IsBody && &ignoreHeader( $_ ) ) {
