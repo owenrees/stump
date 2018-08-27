@@ -282,6 +282,9 @@ sub ignoreHeader {
   return 1 if( $header =~ /^Sender:/i );
   return 1 if( $header =~ /^In-Reply-To:/i );
   return 1 if( $header =~ /^Originator:/i );
+  return 1 if( $header =~ /^X-Trace:/i );
+  return 1 if( $header =~ /^X-Complaints-To:/i );
+  return 1 if( $header =~ /^NNTP-Posting-Date:/i );
 
   return 0;
 }
