@@ -355,7 +355,8 @@ sub readMessage {
 	    $_ = substr($_, 0, 500);
 	    $_ =~ s/\n?$/\n/;
 	    $readahead = $_;
-	    $_ = $warning->("Next header truncated!");
+	    m/^[0-9a-z-]+/i;
+	    $_ = $warning->("Next header ($&) truncated!");
 	  }
 	}
       } else {
