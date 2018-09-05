@@ -350,7 +350,7 @@ sub readMessage {
 	# But, first, a wrinkle ...
 	if (!m/^(?:References):/i) {
 	  push @unfolded, (m/^[^:]+:/ ? $& : '????')
-	    if s/\n(?=.)/ /g;
+	    if s/\n(?=.)//g;
 	  if (length $_ > 505) { #wtf
 	    $_ = substr($_, 0, 500);
 	    $_ =~ s/\n?$/\n/;
