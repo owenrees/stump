@@ -351,9 +351,11 @@ sub readMessage {
 	if (!m/^(?:References):/i) {
 	  push @unfolded, (m/^[^:]+:/ ? $& : '????')
 	    if s/\n(?=.)//g;
-	  if (length $_ > 505) { #wtf
-	    $_ = substr($_, 0, 500);
-	    $_ =~ s/\n?$/\n/;
+	  my $maxlen = 510;
+	  if (length $_ > $maxlen+1) { # $maxlen plus one \n
+	    chomp;
+	    $_ = substr($_, 0, $maxlen);
+	    $_ .= "\n";
 	    $readahead = $_;
 	    m/^[0-9a-z-]+/i;
 	    $_ = $warning->("Next header ($&) truncated!");
