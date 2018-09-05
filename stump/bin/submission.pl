@@ -348,13 +348,15 @@ sub readMessage {
 	# In these cases, keep that in $readahead for now,
 	# and process the previous header, which is in $_.
 	# But, first, a wrinkle ...
-	push @unfolded, (m/^[^:]+:/ ? $& : '????')
+	if (!m/^(?:References):/i) {
+	  push @unfolded, (m/^[^:]+:/ ? $& : '????')
 	    if s/\n(?=.)/ /g;
-	if (length $_ > 505) { #wtf
-	  $_ = substr($_, 0, 500);
-	  $_ =~ s/\n?$/\n/;
-	  $readahead = $_;
-	  $_ = $warning->("Next header truncated!");
+	  if (length $_ > 505) { #wtf
+	    $_ = substr($_, 0, 500);
+	    $_ =~ s/\n?$/\n/;
+	    $readahead = $_;
+	    $_ = $warning->("Next header truncated!");
+	  }
 	}
       } else {
 	# $_ is empty line at end of headers
