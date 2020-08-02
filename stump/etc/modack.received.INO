@@ -8,7 +8,7 @@ TMPFILE=$TMP/reply.$$
 cat > $TMPFILE
 
 (
-  formail -rt -I "Reply-To: $NOACK" \
+  formail -brt -I "Reply-To: $NOACK" \
         -I "X-Webstump-Event: ack" \
 	$MAILOUT_RECVACK_FORMAIL_ARGS \
      < $TMPFILE

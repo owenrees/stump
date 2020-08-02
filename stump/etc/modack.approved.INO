@@ -10,7 +10,7 @@ fi
 input="$1"
 
 (
-  formail <"$input" -rt -I "Reply-To: $NOACK"	\
+  formail <"$input" -brt -I "Reply-To: $NOACK"	\
 	        -I "X-Webstump-Event: approve"	\
 		$MAILOUT_ACCEPTACK_FORMAIL_ARGS
   cat <<_EOB_

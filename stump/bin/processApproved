@@ -41,7 +41,7 @@ post() {
     # lines in the added headers.
 
     cat $TMPFILE					\
-      | formail -f -a "Newsgroups: $NEWSGROUP"		\
+      | formail -b -f -a "Newsgroups: $NEWSGROUP"	\
 	    -I Path:					\
             -I X-Moderate-For:                          \
             -I Return-Path:                             \

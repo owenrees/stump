@@ -50,7 +50,7 @@ $Newsgroup = $ENV{'NEWSGROUP'};
 $TmpFile = "$ENV{'TMP'}/submission.$$";
 
 # how do we treat suspicious articles?
-$Command_Suspicious = "formail -a \"Newsgroups: $Newsgroup\" " .
+$Command_Suspicious = "formail -b -a \"Newsgroups: $Newsgroup\" " .
                       "| stump.pl suspicious.pl";
 
 # approved
