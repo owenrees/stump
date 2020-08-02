@@ -29,7 +29,7 @@ reply() {
     if [ "x$WEBSTUMP_MESSAGENUM" != x ]; then
         eventheader="[$WEBSTUMP_MESSAGENUM] $eventheader"
     fi
-    cat $MESSAGE | formail -rt -I "Reply-To: $BOARD" 	\
+    cat $MESSAGE | formail -brt -I "Reply-To: $BOARD" 	\
 			       -I "Errors-To: $MUNGED_ADDRESS"	 \
         -I "X-Webstump-Event: $eventheader" \
 	$MAILOUT_REJECT_FORMAIL_ARGS
