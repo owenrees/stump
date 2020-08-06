@@ -15,6 +15,8 @@ if( !($0 =~ /\/scripts\/file-message\.pl$/) ) {
 
 $webstump_home = $0;
 $webstump_home =~ s/\/scripts\/file-message\.pl$//;
+$webstump_home =~ /(^.*$)/;
+$webstump_home = $1;
 
 open STDOUT, ">> $webstump_home/../errs" or die $!;
 open STDERR, ">&STDOUT" or die $!;

@@ -13,12 +13,11 @@ umask 007;
 
 $webstump_home = $0;
 $webstump_home =~ s/\/scripts\/webstump\.pl$//;
+$webstump_home =~ /(^.*$)/;
+$webstump_home = $1;
 
 my $logfile= "$webstump_home/../errs";
 open STDERR, ">> $logfile" or die "$logfile $!";
-
-$webstump_home =~ /(^.*$)/;
-$webstump_home = $1;
 
 require "$webstump_home/config/webstump.cfg";
 require "$webstump_home/scripts/webstump.lib.pl";
@@ -37,7 +36,7 @@ $html_mode = "yes";
 
 $command = "";
 
-if( defined %request ) {
+if( %request ) {
   &disinfect_request;
   $command = $request{'action'} if( defined $request{'action'} );
 }
