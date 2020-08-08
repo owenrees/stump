@@ -1,0 +1,10 @@
+discard::SILENTLY DISCARD (eg because message is spam)
+abuse::message is rude and abusive
+repetition::message is excessively repetitious
+crosspost::crossposting to that newsgroup is not permitted
+charter::not in accordance with the charter
+test::message is a test
+meta::unconstructive or excessive metadiscussion
+inflammatory::needlessly inflammatory
+mistake::appears to have been posted in error
+blocklist::poster banned

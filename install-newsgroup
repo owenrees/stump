@@ -1,0 +1,86 @@
+#!/bin/bash
+set -e
+
+. get-settings
+
+mkdir -p stump/tmp/messages
+mkdir -p stump/data
+mkdir -p webstump/queues/$GROUP
+mkdir -p webstump/log
+mkdir -p xlog/log/$GROUP/public
+
+ngdir=webstump/config/newsgroups/$GROUP
+mkdir -p $ngdir
+cp webstump/skeleton/*.IN[1O] $ngdir/.
+
+exec <moderators
+
+mods=$ngdir/moderators
+exec 3>$mods.new
+
+test -f $mods || touch $mods
+
+while read name email; do
+	set +e
+	grep "^$name " $mods >$mods.tmp
+	rc=$?
+	set -e
+	case $rc in
+	0)	;;
+	1)
+		pass=`perl -e </dev/urandom '
+			select(STDIN); $|=1; select(STDOUT);
+			for $x (0..7) {
+				read(STDIN,$bin,4) == 4 or die $!;
+				$v= unpack "l",$bin;
+				$v %= 36;
+				printf "%c", $v<10
+					? $v+ord("0")
+					: $v-10+ord("A");
+			}
+			print "\n";
+		'`
+		echo "$name $pass" >$mods.tmp
+
+		mail -s "your $ABBREV moderator password" <<END "$email"
+The moderation interface for $GROUP is here:
+  $CGIBASEURL/g.$ABBREV/webstump?action=login_screen&newsgroup=$GROUP
+
+Your username and password for the moderation interface are:
+  $name
+  $pass
+These are _not_ case sensitive (!)
+
+Please see other emails for further information.
+
+Regards,
+moderation system administrator
+END
+		;;
+	*)
+		echo >&2 "huh $rc ?"; exit 1
+		;;
+	esac
+	cat $mods.tmp >&3
+	rm $mods.tmp
+done
+
+exec <$mods
+while read name pass; do
+	set +e
+	grep "^$name " $mods.new >$mods.tmp
+	rc=$?
+	set -e
+	case $rc in
+	0)	;;
+	1)
+		echo "*** Removing obsolete moderator $name"
+		;;
+	*)
+		echo >&2 "huh2 $rc ?"; exit 1
+		;;
+	esac
+	rm $mods.tmp
+done
+
+mv -f $mods.new $mods

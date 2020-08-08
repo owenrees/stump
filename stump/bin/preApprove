@@ -1,0 +1,13 @@
+#!/bin/sh
+
+set -e
+
+if [ "x$@" = "x" ]; then
+
+  cat >> $MNG_ROOT/data/good.guys.list
+
+else
+
+  echo $@ >> $MNG_ROOT/data/good.guys.list
+
+fi

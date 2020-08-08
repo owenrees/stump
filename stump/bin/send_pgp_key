@@ -1,0 +1,25 @@
+#!/bin/bash
+
+set -e
+set -o pipefail
+
+(
+  formail -r -I "Subject: $NEWSGROUP Approval PGP Key"	\
+	  -I "Reply-To: devnull@algebra.com"		\
+	  -I "Errors-To: devnull@algebra.com"
+
+  cat << _EOB_
+Hello,
+
+Thank you for requesting PGP Public Key used to sign submissions to
+soc.culture.russian.moderated newsgroup. Please use PGP Moose scripts
+to verify integrity of robomod's signatures on your news articles and
+report any articles that fail verification to scrm-admin@algebra.com.
+
+Thanks,
+
+	- Your Friendly $NEWSGROUP Robomoderator.
+
+_EOB_
+  cat $MNG_ROOT/approval.key.txt
+) | /usr/sbin/sendmail -t

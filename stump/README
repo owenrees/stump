@@ -1,0 +1,25 @@
+STUMP is a free robomoderator program for moderators of USENET
+newsgroups and mailing lists. 
+
+STUMP is covered by the GNU Public License (see file LICENSE). This means
+that you can use this code as you see fit, however I am not liable for
+any damages whatsoever that can result in connection with your use of
+this program.
+
+For installation instructions and general information, please see
+
+	http://www.algebra.com/~ichudov/stump/
+
+Note that even though STUMP is free, for those without Unix background 
+or a Unix account I provide commercial moderation bot hosting. See the
+webpage for details.
+
+If you have installation questions (and even if you do not), please
+join the stump-users mailing list. To subscribe, send email to 
+majordomo@algebra.com, saying (in the message body)
+
+subscribe stump-users
+
+Send your messages to the mailing list to stump-users@algebra.com. I
+monitor this list and try to answer questions. Along with your questions,
+please tell us the name of your newsgroup.

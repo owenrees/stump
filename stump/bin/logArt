@@ -1,0 +1,46 @@
+#!/usr/bin/perl
+
+$MNG_ROOT=$ENV{'MNG_ROOT'};
+
+$date = `date`; chop $date;
+
+print STDERR "Activity: $date $ARGV[0] "; shift @ARGV;
+
+######################################################################
+# Getting data
+sub readMessage {
+  $IsBody = 0;
+  
+  while( <> ) {
+
+    chop;
+  
+    if( /^$/ ) {
+      $IsBody = 1;
+    }
+  
+    if( !$IsBody ) {
+  
+      if( /^Newsgroups: / ) {
+        $Newsgroups = $_;
+      } elsif( /^Subject: / ) {
+        $Subject = $_;
+      } elsif( /^From: / ) {
+        $From = $_;
+      } elsif( /^Path: / ) {
+        $Path = $_;
+      } elsif( /^Keywords: / ) {
+        $Keywords = $_;
+      } elsif( /^Summary: / ) {
+        $Summary = $_;
+      } elsif( /^Message-ID: / ) {
+        $Message_ID = $_;
+      }
+  
+    }
+  }
+}
+
+&readMessage;
+
+print STDERR "$Message_ID, $Subject from $From \n";

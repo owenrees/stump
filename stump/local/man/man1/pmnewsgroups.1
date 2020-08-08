@@ -1,0 +1,22 @@
+.TH PMNEWSGROUPS 1 "PGP Moose"
+.\"@(#)pmnewsgroups.1	1.3 (PGPMoose) 95/10/21
+.SH NAME
+pmnewsgroups \- extract a list of all newsgroups
+from an article's headers.
+.SH SYNOPSIS
+.BI pmnewsgroups [file] 
+.SH DESCRIPTION
+.I Pmnewsgroups
+accepts an article from the named
+.I file
+(or standard input if not specified), selects
+the header field, Newsgroups:,
+and writes to standard output a sorted list of
+the newsgroups present, one per line.
+.\".SH FILES
+.SH SEE ALSO
+.IR pmapp (1),
+.IR pmcheck (1),
+.IR pmcanon (1),
+.SH AUTHOR
+Greg Rose, RoSecure Software.

@@ -1,0 +1,15 @@
+#!/bin/bash
+set -e
+
+. ./get-settings
+
+install_link () {
+	rm -f $2.new
+	ln -s $1 $2.new
+	mv -f -T $2.new $2
+}
+
+install_link $BASEDIR/cgi              $CGISCRIPTDIR/g.$ABBREV
+install_link $BASEDIR/cgi/logs         $CGISCRIPTDIR/l.$ABBREV
+install_link $BASEDIR/public-html      $STATICFILESDIR/g.$ABBREV
+install_link ../xlog/log/$GROUP/public $STATICFILESDIR/g.$ABBREV/messages

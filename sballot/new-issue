@@ -1,0 +1,173 @@
+#!/usr/bin/perl -w
+#
+# usage: .../new-ballot '[YNA]' 'Remove Bad Bozo from the moderation panel'
+#                        ^ regexp, put into   /^(?:$regexp)$/io
+
+use strict qw(refs vars);
+
+BEGIN {
+    my $sballotdir= $0;        $sballotdir =~ s,/[^/]*$,,;
+    chdir $sballotdir or die "$sballotdir $!";
+    unshift @INC, '..';
+};
+
+use ModerationCommon;
+use POSIX;
+
+@ARGV==2 or die;
+$ARGV[0] !~ m/^-/ or die;
+my $regexp= shift @ARGV;
+my $title= shift @ARGV;
+
+readsettings();
+
+system "rm -rf issues/new";
+mkdir "issues" or $!==&EEXIST or die $!;
+mkdir "issues/new",0770 or die $!;
+
+stat "issues/new" or die $!;
+my $issueid= time.'-'.((stat _)[1]);
+my $issuedir= "issues/$issueid";
+
+rename "issues/new", $issuedir or die $!;
+
+open T, "> $issuedir/title" or die $!;
+print T $title, "\n" or die $!;
+print T $regexp, "\n" or die $!;
+close T or die $!;
+
+
+open S, "/dev/urandom" or die $!;
+
+sub randhex () {
+    my $nonce;
+    sysread(S, $nonce, $hashlen) == $hashlen or die $!;
+    return unpack "H*", $nonce;
+}
+
+my @mods;
+
+open M, "../moderators" or die $!;
+while (<M>) {
+    next unless m/\S/;
+    next if m/^\#/;
+    m/^([A-Z]+)\s+(\S+)\s*$/ or die;
+    my $m= { Name => $1, Email => $2 };
+    $m->{Nonce}= randhex();     $m->{Ident}= hash($m->{Nonce});
+    $m->{Password}= randhex();  $m->{HashedPw}= hash($m->{Password});
+    push @mods, $m;
+}
+close M or die $!;
+
+
+sendmail_start();
+print P <<END or warn $!;
+To: $setting{ABBREV} moderators <$setting{MODEMAIL}>
+Subject: Secret ballot initiated for $setting{ABBREV}
+
+The administrator of $setting{GROUP}
+has initiated a new secret ballot on the question:
+  Issue ID: $issueid
+  Title: $title
+
+Each moderator will be sent a private email telling them their
+pseudonym and voting details.  
+
+There will also be an announcement from the administrator confirming
+that this is the live ballot (as if there are problems with the
+software, it may be necessary to initiate several) and explaining what
+to enter into the "vote" box on the voting page.  DO NOT VOTE YET
+- wait for the administrator's handwritten instructions.
+
+The moderators who will be able to vote are the following people:
+END
+foreach my $m (@mods) {
+    my $opqe= $m->{Email};
+    $opqe =~ s/\@/ (at) /;
+    printf P "  %-10s %s\n", $m->{Name}, $opqe or die $!;
+}
+
+print P <<END or die $!;
+If you are not listed, or your email address is wrong, or you do not
+receive the private login details email (which should arrive almost
+immediately), please say so as soon as possible.
+
+The pseudonyms which have been assigned are as follows:
+END
+
+@mods= sort { $a->{Ident} cmp $b->{Ident} } @mods;
+foreach my $m (@mods) {
+    my $vfile= "$issuedir/v.$m->{Ident}";
+    open V, "> $vfile" or die "$vfile $!";
+    print V "$m->{HashedPw} not voted\n" or die $!;
+    close V or die $!;
+    print P "  ", $m->{Ident}, "\n" or die $!;
+}
+
+print P <<END or die $!;
+(the pseudonyms have been sorted into numerical order)
+
+Thanks for your attention.
+moderation system robot
+END
+
+sendmail_finish();
+
+foreach my $m (@mods) {
+    sendmail_start();
+    print P <<END or warn $!;
+To: $setting{ABBREV} moderator $m->{Name} <$m->{Email}>
+Subject: [$setting{ABBREV}] Secret ballot private info
+
+The administrator of $setting{GROUP}
+has initiated a new secret ballot on the question:
+  Issue ID: $issueid
+  Title: $title
+
+Your login details for voting are:
+ Pseudonym: $m->{Ident}
+ Password:  $m->{Password}
+
+DO NOT VOTE YET - see below.
+
+These are confidential to you, valid only for this particular vote,
+and cannot be regenerated if they are lost.  So please keep this email
+but do not reveal it to anyone.  Reveal the password only to the
+voting web page.
+
+There will also be an announcement from the administrator confirming
+that this is the live ballot (as if there are problems with the
+software, it may be necessary to initiate several) and explaining what
+to enter into the "vote" box on the voting page.  Please DO NOT VOTE
+until you've received that confirmation and instructions.
+
+Thanks for your attention,
+moderation system robot
+
+Addendum for the paranoid:
+Your pseudonym was generated from a nonce, as follows:
+  echo $m->{Nonce} | sha256sum
+Only you know this nonce - it is not stored on the moderation system
+server.  You should check that your vote is properly recorded and
+complain if not: vote tallies will list which way each pseudonym
+voted.
+END
+    sendmail_finish();
+}
+
+sendmail_start();
+print P <<END or warn $!;
+To: $setting{ADMIN}
+Subject: ballot $issueid URL
+
+Ballot successfully started
+  Group: $setting{GROUP}
+  Issue ID: $issueid
+  Title: $title
+
+URL:
+  $setting{CGIBASEURL}/g.$setting{ABBREV}/sballot?issue=$issueid
+
+END
+
+sendmail_finish();

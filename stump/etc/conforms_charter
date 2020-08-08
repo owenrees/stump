@@ -1,0 +1,13 @@
+#!/bin/sh
+#
+# This script checks whether the article conforms to the charter.
+# It accepts the article from stdin.
+#
+# should be individual for every newsgroup
+#
+
+if isbinary ; then
+  exit 1 # does NOT conform
+fi
+
+exit 0 # conforms

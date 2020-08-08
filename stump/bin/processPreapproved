@@ -1,0 +1,49 @@
+#!/usr/bin/perl
+#
+# Preapproves the person and gets his/her message posted via processApproved
+#
+
+# get the directory where robomod is residing
+$MNG_ROOT = $ENV{'MNG_ROOT'} || die "Root dir for moderation not specified";
+
+# common library
+require "$MNG_ROOT/bin/robomod.pl";
+
+$GoodGuys = "$MNG_ROOT/data/good.guys.list";
+
+$Argv = join( ' ', @ARGV );
+
+
+open( PROCESS_APPROVED, "|processApproved $Argv" ) or die $!;
+
+while( <STDIN> ) {
+  $From = $_ if( /^From: / );
+
+  print PROCESS_APPROVED or die $!;
+
+  chop;
+  last if( /^$/ );
+}
+
+while( <STDIN> ) { # Body
+  print PROCESS_APPROVED or die $!;
+}
+
+close PROCESS_APPROVED or die "$? $!";
+
+$From =~ s/^From: //g;
+if( $From =~ m/([\w-\.]*)\@([\w-\.]+)/ ) {
+  $From = "$1\@$2";
+} else {
+  print STDERR "From line `$From' is incorrect\n";
+  exit 0;
+}
+
+if( !&nameIsInListExactly( $From, "good.guys.list" ) ) { # need to preapprove
+  &logAction( "Action: processPreapproved $From\n" );
+  open( GOOD_GUYS, ">>$GoodGuys" ) or die $!;
+    print GOOD_GUYS "$From\n" or die $!;
+  close( GOOD_GUYS ) or die $!;
+} else {
+  print STDERR "$From already preapproved\n";
+}

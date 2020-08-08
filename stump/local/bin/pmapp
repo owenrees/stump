@@ -1,0 +1,301 @@
+#!/bin/sh
+
+# @(#)pmapp     1.18 (PGP Moose) 97/07/10
+# Authorisation script for PGP Moose
+# Written by Greg Rose, RoSecure Software, Copyright C 1995.
+
+# Updated by rec.radio.amateur.moderated moderation team and Tim Skirvin -
+# 21 Nov 2006
+
+# Debugging
+# On most shells the following statements redirect a log of what
+# is happening, AND ALL ERROR MESSAGES, to /tmp/pmdebug. Some shells
+# (notably /bin/sh on Ultrix systems) do not do the redirection.
+#exec 2>/tmp/pmdebug
+#set -x
+
+# Configuration Stuff:
+
+    # Default user / newsgroup. If not set, an argument is mandatory.
+    #DEFAULT_NEWSGROUP=rec.radio.amateur.moderated
+    #DEFAULT_NEWSGROUP=misc.test.moderated
+    #DEFAULT_NEWSGROUP=misc.test
+    #DEFAULT_NEWSGROUP=panix.test
+
+    # If an Approved: line is to be added, this is what it will say.
+    # Can be set in the environment.
+    if [ "x$APP" = "x" ]; then
+        APP="Authorising user <auth@moderator.site.com>"
+    fi
+
+    # If a From: line is to be added, this is what it will say.
+    # Can be set in the environment.
+    if [ "x$FROM" = "x" ]; then
+        if [ "x$LOGNAME" = "x" ]; then
+            LOGNAME=`whoami`
+        fi
+        FROM="`grep \^$LOGNAME: /etc/passwd |
+            awk -F: '{print \$5}'` <$LOGNAME@`hostname`>"
+    fi
+
+    # The PGP user and (optional) password. The password will be read
+    # from the controlling terminal if not specified. If the newsgroup/user
+    # argument is an email address, it is used instead of the configured
+    # PMUSER. The following line provides a default password if it is unset.
+    # This password will NOT be used if an email address is presented as an
+    # argument.
+    # Can be set in the environment.
+    if [ "x$PMUSER" = "x" ]; then
+        PMUSER=pgpmoose
+        DEFAULT_PASSWORD=t
+    fi
+
+    # In the case of a user posting, the name desired on the X-Auth
+    # line might not be the one used by PGP to look up the key.
+    # In this case, set this variable or import it. By default, though,
+    # leave it empty and $PMUSER will be used.
+    # Can be set in the environment.
+    if [ "x$PGPUSER" = "x" ]; then
+        PGPUSER=
+    fi
+
+    # Whether or not to fold long lines.
+    # Can be set in the environment.
+    if [ "x$FOLDLINES" = "x" ]; then
+        FOLDLINES=false         # allowed values are 'true' or 'false'
+    fi
+
+    # Name of the posting host. Must be fully qualified host.domain.
+    # Unless your hostname is not fuly qualified, or you want to use
+    # an alias, you may as well just keep it as it is.
+    HOSTNAME=`hostname`
+
+    # A place to put temp files. These can add up to about twice the
+    # size of the article being posted.
+    TMP=/tmp
+
+    # If a Message-ID is being generated, this will appear in it.
+    DATESTAMP=`date +%Y\%m\%d\%H\%M`  # NO WHITESPACE OR METACHARACTERS
+
+    # Where the active file is on this system, for checking crosspostings
+    # to multiple moderated groups. The check will be disabled if this is
+    # left empty (and Approved: lines will be added if needed).
+    ACTIVE=/usr/local/news/active
+
+    # If the article is crossposted to other moderated groups, a warning
+    # tells you to reorder the newsgroups and submit the article. A copy
+    # of the article is deposited in this file for you to edit.
+    SAVED_ARTICLE=$TMP/article
+
+# End of configuration stuff.
+
+# Be neat and tidy.
+TF=$TMP/pmapp$$
+trap "stty echo </dev/tty >/dev/tty 2>/dev/null; rm -f $TF.?; exit 1" 1 2 3 15
+
+# Check usage, set arguments
+USAGE='echo >&2 "Usage: $0 [newsgroup|user] [article]"; exit 1'
+case $# in
+1)
+    if [ ! -r "$1" ]; then
+        cat >$TF.f
+        FILE=$TF.f
+        FILENAME="on standard input"
+        NEWSGROUP="$1"
+    elif [ ! "$DEFAULT_NEWSGROUP" ]; then
+        echo >&2 "$0: No default user or newsgroup set."
+        eval "$USAGE"
+    else
+        FILE="$1"
+        FILENAME="$1"
+        NEWSGROUP="$DEFAULT_NEWSGROUP"
+        PMPASSWORD="$DEFAULT_PASSWORD"
+    fi
+    ;;
+2)
+    if [ ! -r $2 ]; then
+        echo >&2 "$0: Can't read $2"
+        eval "$USAGE"
+    fi
+    FILE="$2"
+    FILENAME="$2"
+    NEWSGROUP="$1"
+    ;;
+0)
+    if [ ! "$DEFAULT_NEWSGROUP" ]; then
+        echo >&2 "$0: No default user or newsgroup set."
+        eval "$USAGE"
+    fi
+    cat >$TF.f
+    FILE=$TF.f
+    FILENAME="on standard input"
+    NEWSGROUP="$DEFAULT_NEWSGROUP"
+    PMPASSWORD="$DEFAULT_PASSWORD"
+    ;;
+*)
+    eval "$USAGE"
+    ;;
+esac
+
+case "$NEWSGROUP" in
+*@*)
+    USERFLAG=true
+    PMUSER=$NEWSGROUP
+    # PMPASSWORD is left either as imported or null in this case.
+    ;;
+*)
+    USERFLAG=false
+    PMPASSWORD="${PMPASSWORD-$DEFAULT_PASSWORD}"
+    ;;
+esac
+
+# Set the user ID to be given to PGP to look up the key.
+if [ "x$PGPUSER" = "x" ]; then
+    PGPUSER=$PMUSER
+fi
+
+# Split the file into headers and body.
+# Note long lines in the body may be folded.
+sed -n -e '/^ *$/q' -e 'p' $FILE >$TF.h
+{ echo ""; sed -e '1,/^ *$/d' $FILE; } >$TF.b
+if $FOLDLINES; then
+    d='..........'
+    if grep -s "$d$d$d$d$d$d$d$d" $TF.b >/dev/null; then
+        echo >&2 "$0: warning: lines exceed 80 characters, being folded."
+        sed  -e '/.\{80\}/s/.\{79\}/&\
+    /g' $TF.b >$TF.l
+        mv $TF.l $TF.b
+    fi
+fi
+
+if [ ! -s $TF.h ]; then
+    echo "$0: problem with article $FILENAME; header section empty." >&2
+    exit 1
+fi
+
+# If no From: line, add one.
+grep -i -s '^From:' $TF.h >/dev/null ||
+    echo "From: $FROM" >>$TF.h
+
+# If no Message-ID: line, add one.
+grep -i -s '^Message-ID:' $TF.h >/dev/null ||
+    echo "Message-ID: <pgpmoose.$DATESTAMP.$$@$HOSTNAME>" >>$TF.h
+
+# Check for or Provide a Newsgroups: line if none there,
+grep -i -s '^Newsgroups:' $TF.h >/dev/null || \
+    if $USERFLAG; then
+        # that is fine
+        :
+    else
+        echo "Newsgroups: $NEWSGROUP" >>$TF.h
+    fi
+
+# Get the list of newsgroups and check that we are in it!
+pmnewsgroups $TF.h >$TF.n
+$USERFLAG || grep -i -s "^$NEWSGROUP\$" $TF.n >/dev/null || {
+    echo >&2 "$0: Newsgroup $NEWSGROUP not present in article $FILENAME"
+    exit 1
+}
+
+# Read a password if none is configured.
+#if [ ! "$PMPASSWORD" ]; then
+#    stty -echo </dev/tty >/dev/tty 2>/dev/null
+#    echo "Enter PGP passphrase for $PGPUSER:" >/dev/tty
+#    PMPASSWORD=`head -1 </dev/tty`
+#    stty echo </dev/tty >/dev/tty 2>/dev/null
+#fi
+# --passphrase "$PMPASSWORD"
+
+# Compute a signature for the important information.
+#PGPPASSFD=0
+#export PGPPASSFD
+{
+    cat $TF.h $TF.b | pmcanon | tee $TF.m
+} | gpg --detach-sign --textmode --armor --batch --user "$PMUSER_APPROVAL" >$TF.s 2>$TF.e || {
+    echo >&2 "$0: PGP signing failed. PGP output:"
+    cat >&2 $TF.e
+    exit 1
+}
+
+# Add an appropriate X-Auth: header
+{
+    echo "X-Auth: PGPMoose V2.0 PGP $NEWSGROUP"
+    sed -e '1,/^$/d' -e '/END PGP SIGNATURE/d' -e 's/^/ /' $TF.s
+} >>$TF.h
+
+# Since we are in test mode, disable Google archiving
+#grep -i -s '^X-No-Archive:' $TF.h >/dev/null ||
+#    echo "X-No-Archive: yes" >>$TF.h
+
+# Now one of the hardest parts. If there is no Approved: line,
+# check for moderated groups that don't have an X-Auth: line
+# and do something sensible.
+$USERFLAG || grep -i -s '^Approved:' $TF.h >/dev/null || {
+    if [ "$ACTIVE" ]; then
+        # Cut it down to a list of un-X-Auth:ed groups
+        egrep -i '^X-(Auth.*|Approved):' $TF.h \
+            | sed -n -e 's/^.* //p' \
+            | sort \
+            | comm -23 $TF.n - \
+            >$TF.u
+        # Check if any of these are moderated
+        if [ -s $TF.u ]; then
+            badgroup=
+            for i in `cat $TF.u`; do
+                qi=`echo "$i" | sed -e 's/\./\\./g' -e 's/\+/\\+/g' `
+                if grep -i -s "^$qi[    ].*[    ]m$" $ACTIVE >/dev/null; then
+                    echo >&2 "$0: Newsgroup $i is moderated."
+                    badgroup=$i
+                fi
+            done
+            if [ "x$badgroup" != x ]; then
+                cat >&2 <<END
+$0: Other moderated groups appear in newsgroup list.
+    The Authenticated article is saved in $SAVED_ARTICLE.
+    The newsgroups line has been reordered
+    to have it sent to the next moderator in the chain.
+    In future, you can manually add an Approved: line
+    before running this approval script if
+    you are absolutely sure that this is all right.
+END
+                cat >>$TF.h <<END
+X-WARNING-TO-MODERATORS: This article has been processed and
+    accepted using a cryptographic program by the moderator
+    of $NEWSGROUP. Its content must not be changed or it
+    will be automatically cancelled. If you don't like the
+    article or its crossposting, return it to the submitter. 
+    (You can delete this message if you are the last
+    moderator to see it.)
+X-Approved: $APP $NEWSGROUP
+END
+                {
+                    # Make a new set of headers. Most of them are all right.
+                    # Regrettable that this takes so much work, but it
+                    # doesn't happen often, right?
+                    # First pass through all but the Newsgroups:.
+                    sed -n -e '/^[Nn][Ee][Ww][Ss][Gg][Rr][Oo][Uu][Pp][Ss]:/q' \
+                           -e 'p' $TF.h
+                    sed -e '1,/^[Nn][Ee][Ww][Ss][Gg][Rr][Oo][Uu][Pp][Ss]:/d' \
+                        $TF.h \
+                        | sed -n -e '/^[^       ]/,$p'
+                    # Add a new Newsgroups: header
+                    othergroups=`fgrep -v $badgroup $TF.n`
+                    othergroupslist=`echo $othergroups | sed 's/ /,/g'`
+                    echo "Newsgroups: $badgroup,$othergroupslist"
+                    cat $TF.b
+                }
+                rm -f $TF.?
+                exit 0
+            fi
+        fi
+    fi
+    # If not rejected above, we can insert an Approved: header and go for it
+    echo "Approved: $APP" >>$TF.h
+}
+
+# recreate the article on standard output.
+cat $TF.h $TF.b
+
+rm -f $TF.?
+exit 0
+

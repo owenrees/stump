@@ -1,0 +1,22 @@
+#!/bin/bash
+#
+# use this script instead of standard rnews or inews, if you want better
+# propagation of your articles.
+#
+
+set -e
+
+TEMPFILE=$TMP/posting.$$
+
+cat $@ > $TEMPFILE
+
+if /usr/lib/news/rnews -h news.uu.net -S news.uu.net < $TEMPFILE; then
+  echo Rnews successful\!
+else
+  exit 1
+fi
+
+NNTPSERVER=news
+export NNTPSERVER
+
+/usr/lib/news/inews -h < $TEMPFILE &

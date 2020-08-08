@@ -1,0 +1,63 @@
+#!/bin/bash
+
+set -e
+set -o pipefail
+
+# $Id: verifySignature,v 1.2 2007/05/03 23:50:21 rram Exp $
+# Modified to work with GPG
+
+NAME="$1"
+
+TMPFILE=$TMP/vrfy.$$
+
+cat > $TMPFILE
+
+if grep -e "^$BEGIN_PGP_SIGNED_MESSAGE" < $TMPFILE >/dev/null; then
+  SIGNED="YES"
+else
+  SIGNED="NO"
+fi
+
+if [ $SIGNED = "NO" ] ; then 
+  if [ "x$1" != "x" ] ; then
+    echo "No valid sig!" 1>&2
+    rm $TMPFILE
+    exit 1
+  else 
+    rm $TMPFILE
+    exit 0
+  fi
+fi
+
+#
+# this we do under assumption that message IS signed
+#
+
+GOODSIG="gpg: Good signature from \""
+
+DoPGP() {
+#  stump-pgp -f +batchmode=on +pubring=$MNG_ROOT/data/pubring.pgp < $TMPFILE 2>&1 > /dev/null
+   stump-pgp --no-default-keyring --keyring $MNG_ROOT/data/pubring.gpg < $TMPFILE 2>&1 > /dev/null
+}
+
+USERID="`DoPGP | grep -e "^$GOODSIG" | sed \"s/^$GOODSIG//\" | sed 's/"\.$//'`"
+
+
+rm $TMPFILE
+
+echo USERID = "$USERID" 1>&2
+
+if [ "x$1" != "x" ]; then
+  if [ "$USERID" = "$1" ] ; then
+    exit 0
+  else
+    exit 1
+  fi
+else
+  if [ "x$USERID" = "x" ]; then # bad sig!
+    exit 1;
+  fi
+
+  echo "$USERID"
+  exit 0
+fi

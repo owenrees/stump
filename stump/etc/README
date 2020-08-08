@@ -1,0 +1,116 @@
+			STUMP Configuration Directory
+
+This directory contains files that the supporter of the robomoderator
+for your newsgroup (you) is supposed to edit to reflect the
+details of your newsgroup. You will have to edit most of the files
+under this directory to set such parameters as your newsgroup
+name, maximum number of crossposts, specify email addresses of
+your human moderators, and so on.
+
+Below is a short summary of what files you should edit and what they
+are for. Refer to comments in individual files for more details on
+how you should modify them.
+
+I suggest editing the files in the order they are listed here. It 
+is more logical.
+
+==================================================> added-headers
+
+Edit this file and put the header lines that you want to see appended
+to all approved articles. Put there something to the effect that you
+are not responsible for contents of approved posts, put your
+submission and complaint addresses, and if possible provide an
+URL of the Web page with your FAQ and Charter.
+
+==================================================> approval.key.txt
+
+To set this file, you MUST have already created your PGP keys
+needed for moderation. Please refer to the online documentation
+explaining what keys to create and how to do it. Here's how
+to extract the key AFTER you have created it: 
+
+pgp -kxaf csfm-approval-key > $HOME/stump/etc/approval.key.txt
+
+==================================================> rejection-reasons.lst
+
+This file should list exactly the same reasons as mentioned
+in "reject" perl script, BUT in a different format
+
+reason::textual explanation of the reason.
+
+This file is used by the ModScape subsystem.
+
+==================================================> conforms_charter
+
+This shell script allows you to define newsgroup-specific
+checks for submissions. If conforms_charter returns a non-zero
+exit code, the submission will be rejected automatically.
+soc.culture.russian.moderated uses this script to reject
+all binary files.
+
+==================================================> crontab
+
+This file specifies which programs should be run at regular intervals.
+You can skip it if you just started setting up STUMP.
+
+==================================================> messages
+
+This DIRECTORY contains explanations for various reasons for rejection.
+Refer to "reject" script for details on rejection reasons, names and
+files.
+
+==================================================> modack.approved
+
+This shell script is used to send acknowledgments to posters whose messages
+get approved by the robomoderator. Edit this script so that the
+text message is specific to your newsgroups.
+
+==================================================> modack.received
+
+This shell script is used to send acknowledgments to posters whose
+messages were received by the robomoderator. Edit this script so that
+the text message is specific to your newsgroups.
+
+==================================================> modenv
+
+This is the main configuration file for your newsgroup. It has extensive
+instructions. Edit it very carefully and make sure that PATH includes all
+common directories.
+
+==================================================> moderators
+
+This file lists all human moderators and member of moderator
+board for your newsgroup, along with some flags. Please refer to 
+the file itself for more details.
+
+Besides initial setup, you will need to edit this file to support
+moderators going to vacations.
+
+==================================================> mods-message
+
+This shell script is responsible for sending messages for your
+moderator board to the members of said board. You do not really
+need to edit it.
+
+==================================================> mods.sig
+
+Signature for the moderators-only mailing list. It is appended at the
+bottom of every message that is distributed to human moderators.
+Edit it and put whatever you want there.
+
+==================================================> posted_log
+
+This little shell script created a posted log file
+in your home directory. Ignore it.
+
+==================================================> procmail
+
+This DIRECTORY contains some procmail rc files for archiving
+messages. You only need to edit them if you have procmail and
+formail in some non-standard place.
+
+==================================================> procmailrc
+
+This file defines rules for processing incoming mail. You will
+need to edit it extensively if your group relies on different 
+system of aliases than those that I recommend (a bad idea!).

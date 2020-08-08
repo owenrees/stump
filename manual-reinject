@@ -1,0 +1,109 @@
+#!/usr/bin/perl -w
+
+# usage:
+#  cd ~webstump/live-SOMETHING
+#  formail < /path/to/mbox -s ./manual-reinject -f
+# (mbox can sensibly be a folder in ~/mail)
+#
+# without -f means get the instance abbrev out of the Subject line
+# -f means use this instance
+
+use strict;
+use IO::File;
+use POSIX;
+
+our $abbrev;
+our $duplicate;
+our $xmodid;
+our $force;
+
+if (!@ARGV) {
+    $force = 0;
+} elsif (@ARGV==1 && $ARGV[0] eq '-f') {
+    shift @ARGV;
+    $force = 1;
+}
+
+my $sig = $ENV{'HOME'};
+defined $sig or die;
+$sig .= '/.signature';
+die $sig if stat $sig;
+die unless $!==ENOENT;
+
+for (;;) {
+    $_ = <>;
+    die unless defined;
+    last if m/^$/;
+    if (m/^Subject: lost moderated newsgroup submission (\S+)/) {
+	$abbrev = $1;
+    }
+}
+
+for (;;) {
+    $_ = <>;
+    die unless defined;
+    last if m/^======================$/;
+    if (m/^Errors: inews: .*: 441 POST failed - .*: 441 435 Duplicate$/) {
+	$duplicate = 1;
+    }
+}
+
+my $art = IO::File::new_tmpfile;
+defined $art or die $!;
+
+for (;;) {
+    $_ = <>;
+    die unless defined;
+    print $art $_ or die $!;
+    last if m/^$/;
+    if (m/^X-Moderation: \[([^][]+)\]/) {
+	$xmodid = $1;
+    }
+}
+
+for (;;) {
+    $_ = <>;
+    last unless defined;
+    print $art $_ or die $!;
+}
+
+STDIN->error and die $!;
+$art->flush() or die $!;
+seek $art,0,0 or die $!;
+
+die unless $xmodid;
+
+if ($duplicate) {
+    print "$xmodid - duplicate\n";
+    exit 0;
+}
+
+our $injector;
+
+sub stat_ino ($) {
+    my ($obj) = @_;
+    stat $obj or die "$obj $!";
+    my @s = stat _;
+    $#s = 2;
+    return "@s";
+}
+
+if ($force) {
+    $injector = './inews';
+} elsif (!defined $abbrev) {
+    die "abbrev not found in outer Subject";
+} else {
+    my $dir = $ENV{'PWD'};
+    defined $dir or die;
+    my $env_stat = stat_ino $dir;
+    my $cwd_stat = stat_ino '.';
+    die "$env_stat != $cwd_stat" unless $env_stat eq $cwd_stat;
+    $dir =~ s#/live-\w[^/]*$#/live-$abbrev# or die "unexpected cwd $dir";
+    $injector = "$dir/inews";
+}
+
+print "$xmodid - $injector\n";
+
+open STDIN, "<&", $art or die $!;
+exec $injector;
+die "$injector $!";

@@ -1,0 +1,1 @@
+%OURUSER%+%ABBREV%-internal-approve/%KEYWEB2STUMP%@%DOMAIN%

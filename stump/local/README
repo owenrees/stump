@@ -1,0 +1,580 @@
+PGP Moose
+=========
+by Greg Rose <ggr@usenix.org>
+
+The aim of this software is to monitor the news
+postings of moderators of USENET newsgroups, and to
+automatically cancel forged messages purporting to
+be approved.  This can be extended to the approvals
+of individual users to automatically cancel messages
+that appear without having been authorised by the
+user. This has (obviously) been prompted by the
+recent spammings and other events.
+
+This software and protocol is designed around
+cryptographic signatures.  The protocol is designed
+to allow the use of different signature techniques.
+This implemention assumes the use of PGP signatures,
+but can be easily modified to use others, such as
+the Digital Signature Standard.  PGP was chosen for
+its widespread availability around the world.
+
+PGP, the crux of the cryptographic software, was
+written by Phil Zimmermann <prz@acm.org>, who
+otherwise has nothing to do with this. The
+cryptographic framework was written by Greg Rose
+<ggr@usenix.org>, as were the INN news system
+hooks.
+
+
+Contents:
+--------
+
+How Does It Work?
+The Bits:
+How Do You Register For The Service?
+Handling Multiple Moderated Groups:
+Possible Problems We've Forseen:
+Status:
+Obtaining, installing, configuring:
+It Really Wasn't That Hard.
+License Terms:
+Version:
+
+How Does It Work?
+-----------------
+
+This document is written from the point of view of
+a newsgroup moderator, but individual users could
+also use the facility in analagous ways.
+
+When a moderator wants to protect their group from
+forged/unapproved postings, they should register
+their interest with one or more of the sites running
+PGP Moose, and pick up the submission script. As
+part of this process, the moderator would specify
+one or more PGP public keys that are allowed to
+approve postings.
+
+When a post comes in, and the moderator wishes to
+approve it, they do whatever they would normally
+do before actually using inews (or whatever) to
+post the message. As their last action, they run
+the PGP Moose Approval program "pmapp". This
+inserts a special header which
+looks like this:
+
+X-Auth: PGPMoose V1.0 PGP sci.crypt.research
+	iQBVAgUBL1/Kg2zWcw3p062JAQEYIgH/Xyrz6LaGG+fHaSxoexMECovzkIoADrQx
+	l73IXlUQEIoFl5jnDBBdHVvqTMEPS0118ytYVQZoQrdStuXB9Oc9gQ==
+	=azqs
+
+If there are multiple moderated newsgroups, there
+might be multiple X-Auth: headers, one
+for each group that has requested assistance from
+the PGP Moose daemon.  In this example you can
+see that the authentication carries the name of
+the authenticating program, a protocol version
+number, an identifier of the type of digital
+signature (currently only PGP) and the name of
+the newsgroup in question.  These, as well as the
+From:, Subject: and Message-Id: lines, the list
+of newsgroups, and the non-blank lines of the
+message itself, are used as input to the PGP
+program to generate a signature.
+
+The lines of the message body are preprocessed in
+a way that is meant to render harmless any mangling
+that a typical news system might do to the article.
+The article itself is not changed, only the input
+to the signature generation. If a news system
+subsequently mangles the article in a "norma" way,
+for instance by inserting a ">" in front of a line
+starting with "From", it will still pass the signature
+check.
+
+The list of newsgroups must be handled specially,
+so that an article posted to multiple moderated
+controlled newsgroups can be appropriately
+handled.  See below for a more detailed treatment
+of the issues of posting to multiple moderated
+newsgroups.
+
+The PGP signature is then inserted into the
+X-Auth: header, mostly so that it won't
+interfere with, or be confused with, any signature
+in the body of the message.
+
+Anybody can check whether the message has been
+modified in any significant way, simply by running
+the PGP Moose Approval Checking program "pmcheck".
+More importantly, though, the sites running the PGP
+Moose Checking Daemon will be doing this automatically
+for every posting to the registered newsgroups, or
+from the registered users. And, if a posting fails
+the checks, it may be automatically cancelled, and
+a notification sent to the moderator. (Initially,
+the automatic cancellation will be disabled, since
+it is a pretty powerful sledgehammer, but that is
+the intention anyway.)
+
+This software is made freely available for just
+about any purpose, but I've retained copyright so
+as to keep some semblance of involvement. See the
+last section of this file.
+
+
+The Bits:
+---------
+
+The approval and checking part of the PGP Moose
+consists of a number of Bourne Shell scripts calling
+standard Unix utilities and PGP.  I could have used
+perl more elegantly, but this stuff is marginally
+more widely available.  If there are Unix version
+dependencies, they should be considered to be bugs
+and I'll happily attempt to remove them.
+
+pmapp	usage: pmapp [newsgroup|user] [file]
+	
+	This script takes the not-yet-posted
+	article, specified either by filename or
+	from standard input, and creates a
+	signature for it, which is then inserted
+	in the X-Auth: header. The article,
+	ready for posting, appears on the standard
+	output.
+
+	In the configuration section at the top of
+	the script, the moderator may build in the
+	default name of the newsgroup or user, PGP
+	User Id to be used for the signature, and
+	the corresponding password. This is simply
+	for convenience, since spammers are not so
+	likely to go cracking the computer to get
+	the password, and it is a relatively simple
+	matter to generate a new user if it is,
+	indeed, compromised. For the paranoid, like
+	myself, if the password is not configured
+	into the script it is read from the terminal
+	instead.
+
+pmcheck	usage: pmcheck [newsgroup|user] [article]
+
+	This script takes the article, specified
+	either by filename or from standard
+	input, and checks that the
+	X-Auth: line is something it
+	considers to be correct and that the
+	article has not been tampered with.
+	Pmcheck returns successfully if
+	everything checks out.  Otherwise it will
+	return failure and issue one of a number
+	of error messages, for example:
+
+	  Posting for $NEWSGROUP not approved with PGP Moose.
+	  Invalid designated signature from $GROUP
+	  No public key for signature $GROUP
+	  Signature doesn't match $FILE for $GROUP
+	  '$SIG' not accepted for $GROUP.
+
+	Anybody can run pmcheck. It behaves slightly
+	differently depending on the existence of
+	a file called (by default)
+	PGP_Moose_accept, and the presence or
+	absence of a newsgroup or user argument.
+	This file, if it exists, should contain
+	lines with a newsgroup name or email address,
+	some whitespace, and the PGP User Id approved
+	by the moderator or user (usually made up
+	specifically for this purpose). Multiple
+	lines for the same newsgroup/user are allowed.
+	For example:
+
+	  sci.crypt.research      	moderator <ggr@sydney.sterling.com>
+	  sci.crypt.research      	moderator <pgut01@cs.auckland.ac.nz>
+	  ggr@sydney.sterling.com	Greg's News <ggr@sydney.sterling.com>
+
+	If such a file exists, and a specific
+	newsgroup or user is specified, pmcheck is silent
+	if all is well, and issues the last of the
+	error messages above if everything else
+	was all right but the signature was from
+	the wrong person. There must, in this
+	case, be a signature applying to the
+	designated newsgroup or user.
+
+	Without such a file, or if no specific
+	newsgroup or user is given, all the signatures
+	in the article are checked.  In this case
+	it is not considered an error if the signature
+	cannot be checked due to a missing public
+	key.  If each signature is otherwise valid
+	you will get a message like:
+
+	  Valid signature from '$SIG'.
+
+	In any case, if there is a problem with a
+	signature mentioned in the PGP_Moose_accept
+	file, it will be reported and an error status
+	will be returned.
+
+pmcanon
+pmnewsgroups
+	These two scripts are used by pmapp and
+	pmcheck to recreate the exact input for
+	the signature, and to extract the list of
+	newsgroups in the header, respectively.
+	More documentation is in their manual
+	pages.
+
+The PGP Moose checking daemon is packaged
+separately, as there would not seem to be a lot
+of value in having too many people running it.
+Accordingly, I was less precise in making it run
+absolutely everywhere. It requires the Korn shell
+or equivalent, and perl, and currently only
+interfaces to INN. I expect it would be easy to
+interface it to CNews, but I don't have one.
+
+pmdaemon
+	Runs pmcheck to check the X-Auth: header
+	for each controlled newsgroup for each
+	article that arrives in an appropriate
+	newsgroup. Mail is sent about any errant
+	articles, and automatic cancellation may
+	be enabled.
+
+pmcancel
+	prepares a cancellation message based on
+	the headers of another message.
+
+When (if) I get a chance, I will create mail
+server scripts that allow moderators who are not
+using Unix to use these facilities.  The first
+allows a moderator to mail a PGP signed copy of
+the article to be posted.  The server will then
+verify that the moderator sent it, and post it
+with a (different but corresponding) approval.
+The second will accept an article and return
+something that you can check the signature on.
+Either way, any moderator will still need PGP.
+
+
+How Do You Register For The Service?
+------------------------------------
+
+Ahhh, this is the hard part. After all, it would
+be pretty undesirable if someone, meaning well,
+took any old body's word for it that some
+important moderated group should start working
+this way, before the moderator was able to start
+approving postings. A great way to hijack a
+newsgroup. Similarly for hijacking some other
+user's postings (tempting though it might be :-).
+
+Another possibility is that someone, having seen
+what the valid signature looks like, simply
+creates a whole new PGP key that happens to have
+the same PGP User ID. Then they can sign and post
+stuff too.
+
+The solution to both of these problems is the
+classical one for public key systems. You need
+either a certifying authority or the PGP Web of
+Trust. We're using the Web of Trust. If you don't
+understand about PGP and the Web of Trust, go away
+now and come back after you really do understand
+it.
+
+For each newsgroup that wants to utilise this
+program, the moderator will have to create a
+special PGP key pair (preferably 512 bits to keep
+the X-Auth: down to two full lines), and sign it. They
+must then establish a path of trust to someone
+who is running the PGP Moose server. It will be
+up to the administrator of that server to make
+sure that only trusted moderators' keys ever get
+into the server's keyring.
+
+THERE CAN BE NO SHORTCUTS TO THIS PROCEDURE.
+Otherwise we are all back where we started.
+
+In the case of an individual user, again you should
+establish this verification path to one of the
+administrators of the PGP Moose service.  Contact
+me (ggr@usenix.org) for the time
+being to mutually figure out how to do this.
+
+
+Handling Multiple Moderated Groups:
+----------------------------------
+
+When I first proposed this tool, I was under the
+impression that postings to multiple moderated
+groups was an abberation that should be stamped
+out. This turns out not to be the case, and
+revisions to support this have been the cause of
+some delay in the deployment of this tool.
+
+When the news system sees that an article has been
+posted to one or more moderated groups, it checks
+for an Approved: header. If the header exists, the
+article is accepted and processed normally,
+otherwise it is mailed to the moderator of the
+first moderated newsgroup mentioned in the
+Newsgroups: header. There seem to be three cases of
+interest.
+
+The trivial case, and the most normal one, is
+that there is only one moderated newsgroup
+mentioned. The moderator approves the posting, and
+it is done.
+
+The next, and probably most important, case, is
+when a moderator wants to cross-post a FAQ to
+their own group, as well as news.answers (for
+example). In this case their approval counts for
+both groups, so they can insert the Approved:
+header and post away. Presumably the other groups
+are not under the control of the PGP Moose Daemon.
+In this case the moderator can just go ahead and
+put in the Approved: header, and save themself
+and pmapp a lot of time. It will be passed right
+through.
+
+The other case is harder to get right. This is when
+the article really is meant to be posted to two (or
+more) unrelated moderated newsgroups.  Now, if the
+first moderated group's moderator approves the
+posting, the other ones never hear about the article,
+at all. If this second group is controlled by the
+PGP Moose an automatic cancel will be generated. So
+it becomes very important for the moderators to do
+what they should have been doing already, namely
+forward the article to the next moderator. This tool
+can't help people who don't use it, but it provides
+some support for those who do.
+
+The approval script checks whether there are any
+moderated newsgroups left that don't have
+X-Auth: headers for them. If there are
+none left, an Approved: header is inserted and the
+article gets posted.  Otherwise, it issues a warning,
+and re-orders the newsgroups header with a newsgroup
+which is moderated but has no X-Auth: line
+at the start.  When the article is posted, the news
+system will forward it to the moderator of the (new)
+first moderated group. If all moderators are sensible,
+and check for moderated newsgroups in this fashion,
+the mess should sort itself out and the last moderator
+will go ahead and post it. A warning nessage to
+the subsequent moderator NOT to change the
+article is also inserted, since such a
+modification would invalidate the previous
+signatures..
+
+To ease this process, a second type of
+X-Auth: header is supported. this has
+the form:
+
+	X-Auth: None ... Newsgroup
+
+The important fact about this is that
+the newsgroup appears last on the line, allowing a
+sort of partial approval, from moderators who
+don't use the PGP Moose.
+
+The Newsgroups: line is split into a sorted list
+of newsgroups for the purpose of generating the
+digital signature. Note that this means that once
+an article has been approved and authenticated by
+one moderator, it cannot be altered in any way by
+a moderator of a subsequent group, including
+altering the set of newsgroups mentioned in the
+Newsgroups: header, the body of the posting, or
+the other headers mentioned above.
+
+
+Possible Problems We've Forseen:
+--------------------------------
+
+If an article is truly mangled e.g. by truncation, it
+will fail the authentication and be cancelled.
+Until it is demonstrated otherwise, this is
+assumed to be a rare and minor problem. When a
+cancel is issued, mail is sent to the moderator of
+the group telling them, and they can tell us if it
+becomes a problem. (In the initial deployment we
+expect that no automatic cancels will actually be
+generated, only the notification mail will be
+sent.)
+
+Currently the signature produced is assumed to be
+a PGP version 2.6 compatible one.
+
+
+Status:
+-------
+
+These scripts are implemented already, or as noted
+above. They are undergoing beta testing and as soon
+as they have settled they will be made available
+via anonymous FTP and posting to comp.sources.misc
+and sci.crypt.research and the moderators' list.
+
+In the meantime, if you want to use the tools, or
+particularly if you want to run a PGP Moose
+checking daemon, contact me (ggr@usenix.org).
+
+
+Obtaining, installing, configuring:
+-----------------------------------
+
+I regret that I don't have a public ftp site, but
+I do have a web page where you can get a
+compressed tar archive of the approval code. It is
+<A HREF=http://www.usenix.org/~ggr/PGPMoose.html>
+off my home page</A>.
+
+It is hard to talk in detail about installation
+and configuration, since many users are not in
+charge of their own news server configuration. In
+my case, I run all of the things out of a
+subdirectory of my home directory. The only
+thing outside this area which must be changed is
+the INN newsfeeds file, if you are running the
+checking daemon. So, get the distribution file as
+above and unpack it whereever you want it to live.
+
+There are configuration sections at the top of
+pmcheck, pmapp and pmdaemon. I like to think that
+they are relatively self-explanatory. One of the
+harder decisions is whether to use a separate
+keyring for PGP Moose applications or not. It is
+very strongly recommended that you do, if you are
+going to run the PGP Moose checking daemon, as
+the keyring files will need to be readable by the
+userid which INN runs under (usually "news").
+Most of these options can also be overridden by
+environment variables or command arguments, so it
+is possible to leave the scripts unmodified and
+simply put a wrapper around them (which is what I
+do).
+
+In the case of pmapp, the newsgroup or user that
+the authentication applies to can be specified on
+the command itself; The PGP user id and password,
+and the Approved: header's contents, can be
+specified by environment variables PMUSER,
+PMPASSWORD and APP, respectively.
+
+For pmcheck, the important one is the name of the
+configuration file specifying which signatures
+are valid for which newsgroups or users.
+
+Pmdaemon runs from INN, and needs some special
+care to set it up. "news" needs access permission
+to the directory and files for PGP Moose, and
+also read permission on the public keyring. Note
+that PGP creates keyrings with only owner
+permissions. The search path is rarely correct,
+and should be set at the top of the pmdaemon
+script. There are also a number of file names and
+mail addresses, but the comments should be clear
+enough.
+
+Lastly, you want to incorporate pmapp in your
+moderation script and possibly your posting
+script. In my case, the last line of my posting
+script basically said
+
+    /usr/local/news/inews -S -h <tempfile
+
+but now it says 
+
+    pmapp <tempfile | /usr/local/news/inews -S -h
+
+To authenticate postings as an individual (as opposed
+to a moderator) I had to take a copy of the
+installed Pnews script, make sure it came earlier
+on my search path than the normal one, and modify
+that. You have to be careful that no extra
+signature files get appended after the pmapp is
+executed. Again, immediately before the "inews"
+call is the right place. I'm not sure whether
+this will work for all versions of news, this is
+not really my field of competence.
+
+
+It Really Wasn't That Hard.
+---------------------------
+
+I wish people had put as much effort into doing
+this as they did into clogging the Moderators'
+mailing list. It wasn't hard.
+
+But you know what was hard? What Phil Zimmermann
+did creating PGP in the first place. Phil is in
+serious legal hassles over PGP, and if you think
+this effort saves you or your company some time
+or money, I'd like you to consider donating some
+of it to Phil's legal defence fund. Write to me
+or Phil's lawyer Phil Dubois <dubois@acm.org>
+regarding how to donate. You can do it over the
+net using PGP! I probably also should thank the
+many people who have worked hard to bring
+encryption back out of the black chambers. Some
+names which directly come to mind are Diffie,
+Hellman, Merkle, Rivest, Shamir, Adelman, Lai,
+Massey, and probably many others.
+
+Share and Enjoy!
+
+
+License Terms:
+-------------
+
+This software is copyrighted by Greg Rose, RoSecure
+Software, and other parties.  The following terms
+apply to all files associated with the software
+unless explicitly disclaimed in individual
+files.
+
+The authors hereby grant permission to use, copy,
+modify, distribute, and license this software and
+its documentation for any purpose, provided that
+existing copyright notices are retained in all
+copies and that this notice is included verbatim
+in any distributions.  No written agreement,
+license, or royalty fee is required for any of
+the authorized uses.  Modifications to this
+software may be copyrighted by their authors and
+need not follow the licensing terms described
+here, provided that the new terms are clearly
+indicated on the first page of each file where
+they apply.
+
+IN NO EVENT SHALL THE AUTHORS OR DISTRIBUTORS BE
+LIABLE TO ANY PARTY FOR DIRECT, INDIRECT,
+SPECIAL, INCIDENTAL, OR CONSEQUENTIAL DAMAGES
+ARISING OUT OF THE USE OF THIS SOFTWARE, ITS
+DOCUMENTATION, OR ANY DERIVATIVES THEREOF, EVEN
+IF THE AUTHORS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
+
+THE AUTHORS AND DISTRIBUTORS SPECIFICALLY
+DISCLAIM ANY WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE, AND NON-INFRINGEMENT.  THIS SOFTWARE IS
+PROVIDED ON AN "AS IS" BASIS, AND THE AUTHORS AND
+DISTRIBUTORS HAVE NO OBLIGATION TO PROVIDE
+MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR
+MODIFICATIONS.
+
+
+Version:
+-------
+
+@(#)README	1.6 (PGPMoose) 95/10/21

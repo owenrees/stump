@@ -1,0 +1,5 @@
+#!/bin/sh
+
+echo Bogus message: $@ 1>&2
+
+cat | mail -s "Bogus Message" $ADMIN

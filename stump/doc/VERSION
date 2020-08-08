@@ -1,0 +1,32 @@
+VERSION: 2.2
+
+Changes in v 2.2:
+
+	* Improved protection from bounced rejections, to ease work
+	  with munged addresses
+	* A single reference to perl, to simplify addressing perl
+
+Changes in v.2.1:
+
+	* Somewhat cleaned it up, added more explanations, improved
+	  exchange between mods and the bot.
+	* Cleaned up documentation on the web page
+	* Added capability for multi-line moderator comments
+	* Auto-noack is the mainstream feature that is set up by
+	  default.
+	* The bot forms defensive mail headers in order to avoid
+	  excessive bounces resulting from munged addresses.
+
+Changes in v.2.0: 
+
+	* Changed all the way human mods interact with the bot;
+	* Made use of PGP optional
+	* Killed ModScape
+	* Set up mail2news gateway.
+
+Cnanges in v.1.1: 
+
+	* Changed send-netscape-submission.pl to enable ModScape for
+	  Win95 to work.
+
+

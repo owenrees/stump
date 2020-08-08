@@ -1,0 +1,185 @@
+#!/bin/sh
+
+# @(#)pmcheck	1.9 (PGP Moose) 96/03/04
+# Authorisation checking script for PGP Moose
+# Written by Greg Rose, RoSecure Software, Copyright C 1995.
+
+# Configuration:
+    # Where to create temporary files.
+    TMP=/tmp
+
+    # Name of the file with valid moderator's/individual's names
+    ACCEPT=PGP_Moose_accept
+
+# End Configuration
+
+# Be neat and tidy.
+TF=$TMP/pmcheck$$
+trap "rm -f $TF.?; exit 1" 1 2 3 15
+
+VERBOSE=false
+# Usage: $0 [newsgroup|user] [filename]
+case $# in
+0)
+    VERBOSE=true
+    NEWSGROUP=any
+    cat >$TF.f
+    FILE=$TF.f
+    FILENAME="standard input"
+    ;;
+1)
+    if [ -f "$1" ]; then
+	VERBOSE=true
+	NEWSGROUP=any
+	FILE="$1"
+	FILENAME="$1"
+    else
+	cat >$TF.f
+	FILE=$TF.f
+	FILENAME="standard input"
+	NEWSGROUP="$1"
+    fi
+    ;;
+2)
+    NEWSGROUP="$1"
+    FILE="$2"
+    FILENAME="$2"
+    ;;
+*)
+    echo >&2 "Usage: $0 [newsgroup|user] [article]"
+    echo >&2 "       newsgroup may be "any" to check all signatures."
+    exit 1
+    ;;
+esac
+
+# Find all the authentication headers we can handle
+grep -i '^X-Auth.*:  *PGPMoose ' $FILE | \
+    sed -e 's/.* //' >$TF.g
+
+# For the time being, simply avoid cancel messages.
+# Note that pmdaemon authenticates them, but you probably don't
+# want to cancel them.
+if grep -i -s '^Control:[ 	]*cancel' $FILE >/dev/null; then
+    rm -f $TF.?
+    exit 0
+fi
+
+# The designated newsgroup must be validated.
+if [ "x$NEWSGROUP" != "xany" ]; then
+    grep -i -s "^$NEWSGROUP\$" $TF.g >/dev/null || {
+	echo >&2 "$0: Posting for $NEWSGROUP not approved with PGP Moose."
+	rm -f $TF.?
+	exit 1
+    }
+    # Uncomment this line if you only want to check this one group
+    echo "$NEWSGROUP" >$TF.g
+fi
+
+# Make the document we are going to check signatures on.
+pmcanon $FILE >$TF.m
+    
+# Loop checking all X-Auth: lines required
+echo 0 >$TF.b
+while read GROUP; do
+    # Check whether this is an interesting X-Auth: line.
+    # This is determined by the existence of the $ACCEPT file.
+    # If it exists, only the groups/individuals mentioned are
+    # relevent. Otherwise, check everything in sight, but don't
+    # worry if you can't find a key or the signature doesn't match.
+    # CONTROLLED is 0 if there is a $ACCEPT file and this group/user is
+    # in it.
+    [ -f "$ACCEPT" ] && grep -i -s "^$GROUP[ 	]" "$ACCEPT" >/dev/null
+    CONTROLLED=$?
+    if [ "$CONTROLLED" != 0 -a "$NEWSGROUP" != "any" ]; then
+	continue
+    fi
+    # $1      $2       $3   $4  $5
+    # X-Auth: PGPMoose V1.1 PGP sci.crypt.research
+    set -- `grep -i "^X-Auth.*:  *PGPMoose .* $GROUP\$" $FILE`
+
+    # Check for version mismatch, but at the moment we just warn.
+    # It is pretty hard to know just what to do in this case.
+    if [ "$3" != "V2.0" -o "$4" != "PGP" ]; then
+	echo >&2 "$0: warning: version mismatch V2.0 PGP != $3 $4"
+    fi
+
+    # reconstruct the input signature file.
+    cat <<-END_OF_SIG >$TF.s
+	-----BEGIN PGP SIGNATURE-----
+	Version: GnuPG v1.4.5 (NetBSD)
+
+	END_OF_SIG
+    sed -n -e "1,/^[Xx]-[Aa][Uu][Tt][Hh].*:  *PGPMoose .* $GROUP\$/d" \
+	-e '/^ *$/,$d' \
+	-e '/^[^ 	]/,$d' \
+	-e 's/^[ 	]*//p' \
+	$FILE >>$TF.s
+    cat <<-END_OF_SIG >>$TF.s
+	-----END PGP SIGNATURE-----
+	END_OF_SIG
+
+    # Now we can check the signature.
+    gpg --verify $TF.s $TF.m >$TF.e 2>&1
+    STATUS=$?
+#    cat >&2 $TF.s 
+#    echo ====
+#    cat >&2 $TF.m 
+#    echo ====
+#    cat >&2 $TF.e 
+
+    # If this is a target newsgroup/user, any error is bad news.
+    if [ "$CONTROLLED" = 0 -a $STATUS != 0 ]; then
+	echo >&2 "$0: Invalid designated signature from $GROUP"
+	echo 2 >$TF.b
+	continue
+    fi
+    # There are various understood error codes, not to mention the others...
+    # These codes come from the PGP source, and are probably not immutable.
+    case "$STATUS" in
+    0)
+	# signature checks out... handle that case below
+	;;
+    11)
+	# Non-existent key
+	if [ "$VERBOSE" = true ]; then
+	    echo "No public key for signature $GROUP"
+	fi
+	continue
+	;;
+    30)
+	# Signature check error
+	$VERBOSE || echo >&2 "Signature doesn't match $FILE for $GROUP"
+	echo 2 >$TF.b
+	continue
+	;;
+    *)
+	# Some other unknown error. Treat same as Non-existent key.
+	if [ "$VERBOSE" = true ]; then
+	    echo "Unknown PGP error, status = $STATUS"
+	    cat $TF.e
+	fi
+	continue
+	;;
+    esac
+
+    SIG=`sed -n 's/gpg: Good signature from "\(.*\)"/\1/p' $TF.e`
+    if [ "x$SIG" = "x" ]; then
+	# this one "can't happen"
+	echo >&2 "$0: MOOSE ERROR: Invalid signature for $GROUP on $FILE."
+    fi
+    if [ "$VERBOSE" = "true" ]; then
+	echo "$0: Verified signature from '$SIG'."
+    fi
+
+    # Finally, was it signed by the right person?
+    if [ "$CONTROLLED" = 0 ]; then
+	grep -i -s "^$GROUP[	 ]*$SIG\$" "$ACCEPT" >/dev/null || {
+	    echo >&2 "$0: '$SIG' not accepted for $GROUP."
+	    echo 2 >$TF.b
+	}
+    fi
+done <$TF.g
+
+BADSIG=`cat $TF.b`
+rm -f $TF.?
+exit $BADSIG

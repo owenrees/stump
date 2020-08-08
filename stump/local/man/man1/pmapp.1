@@ -1,0 +1,90 @@
+.TH PMAPP 1 "PGP Moose"
+.\"@(#)pmapp.1	1.4 (PGPMoose) 95/10/21
+.SH NAME
+pmapp \- insert a verifiable signature into a
+news article.
+.SH SYNOPSIS
+.B pmapp
+.I [newsgroups|user] [file] 
+.SH DESCRIPTION
+.I Pmapp
+accepts an article from the named
+.IR file
+(or standard input if not specified),
+computes a digital signature from the important
+part of the contents, and inserts a special
+header into the article which enables subsequent
+checking of the signature. The amended article is
+produced on standard output, suitable for
+injection into the news system.
+.LP
+The signature is created using the defaults for
+the user name (and optionally password) built
+into the script when a newsgroup is specified. 
+This is the most common case for a newsgroup
+moderator who will use a customised version of
+the script. These defaults can be overridden with
+environment variables \f3PMUSER\fP and
+\f3PMPASSWORD\fP.
+.LP
+In any case, whenever the
+password is the empty string, a prompt is
+written to the controlling terminal and a
+password is read from it.
+.LP
+When a user is specified (by way of an email
+address containing an "\fB@\fP") this is used to
+select the signing user, and a password will be
+requested.
+.LP
+When the signature is being generated for a
+newsgroup, it is assumed that the newsgroup is
+moderated and the invoking user is (one of) the
+moderator(s).
+The simple case is that there is only one
+newsgroup specified; an Approved: line is added
+as well as the X-Auth: line, and the
+article is ready for posting.
+.LP
+\f2Pmapp\fP goes to some trouble to
+handle the case of multiple moderated newsgroups
+in the Newsgroups: line. The first, and probably
+most important, case, is
+when a moderator wants to cross-post a FAQ to
+their own group, as well as news.answers (for
+example). In this case their approval counts for
+both groups, so they can insert the Approved:
+header and post away. Presumably the other groups
+are not under the contol of the PGP Moose Daemon.
+The moderator can just go ahead and
+put in the Approved: header, and save themself
+and pmapp a lot of time. It will be passed right
+through.
+.LP
+The other case is harder to get right. This is when
+the article really is meant to be posted to two (or
+more) unrelated moderated newsgroups. The approval
+script checks whether there are any moderated
+newsgroups left that don't have X-Auth:
+headers for them. If there are none left, an Approved:
+header is inserted and the article gets posted.
+Otherwise, it issues a warning, and re-orders the
+newsgroups header with a newsgroup which is moderated
+but has no X-Auth:  line at the start.
+When the article is posted, the news system will
+forward it to the moderator of the (new) first
+moderated group. If all moderators are sensible,
+and check for moderated newsgroups in this fashion,
+the mess should sort itself out and the last moderator
+will go ahead and post it. A warning message to the
+subsequent moderator NOT to change the article is
+also inserted.
+.\".SH FILES
+.SH SEE ALSO
+.IR pmcheck (1),
+.IR pmcanon (1)
+for a description of the fields which go into the
+signature calculation,
+the PGP User's Manual.
+.SH AUTHOR
+Greg Rose, RoSecure Software.

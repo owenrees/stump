@@ -1,0 +1,38 @@
+#!/bin/sh
+
+# @(#)pmcanon	1.9 (PGP Moose) 97/07/10
+# Canonicalisation script for PGP Moose
+# (in other words, it takes a news article and turns it
+# into something we can compute/check a signature on.)
+# Written by Greg Rose, RoSecure Software, Copyright C 1995.
+
+# Be neat and tidy.
+TMP=/tmp
+TF=$TMP/pgpmt$$
+trap "rm -f /$TF.?" 0 1 2 3 15
+
+# Check usage. File must be specified, and result comes out on stdout.
+if [ $# -gt 1 ]; then
+    echo >&2 "usage: $0 [article]"
+    exit 1
+fi
+
+cat $1 >$TF.f
+sed '/^ *$/q' $TF.f >$TF.h
+
+# multiple greps so we can guarantee order
+pmnewsgroups $TF.f
+{
+    grep -i "^From:" "$TF.h"
+    grep -i "^Subject:" "$TF.h"
+    grep -i "^Message-ID:" "$TF.h"
+} | sed -e 's/^[^:]*: *//' -e 's/: */:/g' -e 's/[ 	]*$//'
+sed -e '1,/^ *$/d' \
+    -e '/^ *$/d' \
+    -e 's/^--/- --/' \
+    -e 's/^[Ff][Rr][Oo][Mm]/>&/' \
+    -e 's/^[Ss][Uu][Bb][Jj][Ee][Cc][Tt]/>&/' \
+    -e 's/^\.$/../' \
+    -e 's/^\.[^.]/.&/' \
+    -e 's/[ 	]*$//' \
+    "$TF.f"

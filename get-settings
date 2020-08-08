@@ -1,0 +1,61 @@
+#
+
+paskeys='KEYSUBMIT KEYSTUMP2WEB KEYWEB2STUMP'
+pas="$paskeys"
+for k in $pas; do eval "$k=''"; export $k; done
+
+DIVERTPOSTINGS=''
+MODLOGSEARCH=true
+MODLOGDOWNLOAD=true
+LOGREPORTOPTS=''
+
+. settings
+export GROUP ABBREV INFOHEADER MODEMAIL GROUPURL REJECTIONSLIST
+export DIVERTPOSTINGS MODLOGSEARCH MODLOGDOWNLOAD LOGREPORTOPTS
+
+. ../global-settings
+export ROOTBASEDIR CGIBASEURL DOMAIN SLIMYDOMAIN OURUSER ADMIN
+export LOGGROUPPREFIX LOGGROUPEMAILPREFIX TESTGROUP
+export STATICFILESURL STATICFILESDIR CGISCRIPTDIR SPAMFILTERINGADMIN
+
+BASEDIR=$ROOTBASEDIR/live-$ABBREV
+export BASEDIR
+
+
+# derivative settings:
+
+PUBREJOPT=''
+if $PUBLISHREJECTIONS; then
+	PUBREJOPT="-P$BASEDIR/settings.publish-rejection-kinds"
+fi
+export PUBREJOPT
+
+
+test -f persistent-autosettings || touch persistent-autosettings
+. persistent-autosettings
+
+exec 3>persistent-autosettings.new
+cat >&3 persistent-autosettings
+
+for k in $pas; do
+	eval "v=\$$k"
+	if [ "x$v" != x ]; then continue; fi
+
+	v="`dd if=/dev/urandom count=6 ibs=1 2> /dev/null \
+		| uuencode -m - \
+		| perl -ne 'y/A-Z\+\//a-z01/; print if $.==2;' `"
+	case $v in
+	????????)	;;
+	*)		exit 1;;
+	esac
+	case $v in
+	*[^0-9a-z]*)	echo >&2 "unexpected from dd etc.: $v"; exit 1 ;;
+	esac
+	echo >&3 "$k='$v'"
+done
+
+mv -f persistent-autosettings.new persistent-autosettings
+
+exec 3>&-
+. persistent-autosettings
+

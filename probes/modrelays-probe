@@ -1,0 +1,388 @@
+#!/bin/bash
+
+set -e$MODRELAYS_PROBE_SET_X
+
+MODRELAYS=moderators.isc.org
+PROBE_TIMEOUT=$(( 20 * 60 ))
+PROBE_EXPIRE=$(( 32 * 86400 ))
+
+shopt -s nullglob
+
+case "$1" in
+received)
+	mode="$1"
+	cd "$2"
+	shift; shift; set "$mode" "$@"
+	;;
+esac
+
+. ../global-settings
+. ./settings
+
+id=$(date +%s)_$$
+statedir=probes/probes
+lockfile=$statedir/.lock
+
+fail () {
+	printf >&2 "%s\n" "modrelays-probe: error: $1"
+	exit 16
+}
+
+compute-td () {
+	# implicitly uses GROUP, id, domain
+	# caller must "local td", which will be set
+	local probeid=$1
+
+	probeid="$domain,${probeid//[^-=:.,_0-9A-Za-z]/%},$id"
+	case $probeid in
+	.*|*/*) fail "yikes, sanitisation bug ($probeid) !" ;;
+	esac
+
+	td="$statedir/$probeid"
+}
+
+record-probing () {
+	compute-td "$@"
+	mkdir -p $td
+}
+
+record-probing-start () {
+	record-probing "$@"
+	if ! [ -e "$td/started" ]; then
+		date -R >"$td/started"
+	fi
+}
+
+record-outcome () {
+	local probeid=$1
+	local outcome=$2
+	local message=$3
+	local td
+	record-probing "$probeid"
+	printf "%s\n" >"$td"/"$outcome" "$message"
+}
+
+record-success () { record-outcome "$1" ok ''; }
+record-tempfail () { record-outcome "$1" tempfail "$2"; }
+record-permfail () { record-outcome "$1" permfail "$2"; }
+
+probe-addr () {
+	local mx=$1
+	local addr=$2
+
+	local td
+	record-probing-start "mx=$mx,addr=$addr"
+
+	set +e
+	swaks	--to "${GROUP//./-}@$domain" \
+		--server $addr \
+		--tls-optional-strict \
+		--header 'Subject: test modrelays probe test' \
+		--header \
+	"X-WebSTUMP-Relay-Probe: $GROUP $id $domain $mx $addr" \
+		-n >$td/swaks.log 2>$td/swaks.err
+	rc=$?
+	set -e
+
+	case $rc in
+	0) return ;; # record-success done by receiver
+	esac
+	local permfail=''
+
+	local rhs
+	local prefix
+	local expect_no_5xx='initial connection'
+	exec 4<$td/swaks.log
+	while read <&4 prefix rhs; do
+		case "$prefix" in
+		'<'*)
+			case "$rhs" in
+			5*)
+				if [ "x$expect_no_5xx" != x ] && \
+				   [ "x$permfail" = x ]; then
+					permfail="$rhs ($expect_no_5xx)"
+				fi
+				;;
+			esac
+			;;
+		*'>')
+			case "$rhs" in
+			EHLO*|STARTTLS*) expect_no_5xx='' ;;
+			*) expect_no_5xx="after $rhs" ;;
+			esac
+			;;
+		*)
+		esac
+	done
+
+	if [ "x$permfail" = x ]; then
+		record-tempfail "mx=$mx,addr=$addr" "see swaks.log / swaks.err"
+	else
+		record-permfail "mx=$mx,addr=$addr" "$permfail"
+	fi
+}
+
+probe-domain () {
+	local domain=$1
+	local td
+	record-probing-start dns
+	
+	set +e
+	adnshost -Fi -Tn +Do +Dt -t mx $domain >$td/dns
+	rc=$?
+	set -e
+
+	case $rc in
+	0)
+		# have a list of MX's
+		exec 3<$td/dns
+		local pref
+		local mx
+		local statustype
+		local rhs
+		while read <&3 pref mx statustype statustypenum rhs; do
+			case $statustypenum in
+			0)
+				# have a list of relays
+				case $rhs in
+				*" ( "*")") ;;
+				*)
+					record-permfail "mx=$mx" \
+						"dns format $rhs"
+					continue
+					;;
+				esac
+				rhs=${rhs##* (}
+				rhs=${rhs% )}
+				local addr
+				for addr in $rhs; do
+					case $addr in
+					INET|INET6) continue ;;
+					esac
+					probe-addr $mx $addr
+				done
+				;;
+			[123])
+				# temporary errors
+				record-tempfail "mx=$mx" \
+					"dns $rc $statustype $rhs"
+				;;
+			*)
+				# yikes
+				record-permfail "mx=$mx" \
+					"dns $rc $statustype $rhs"
+				;;
+			esac
+		done
+		record-success dns
+		return
+		;;
+	6)
+		# permfail, try A
+		set +e
+		adnshost -Fi -Tn +Do +Dt -t a $domain >$td/dns
+		rc=$?
+		set -e
+		;;
+	esac
+
+	case $rc in
+	0)
+		# have a list of A's (dealt with MXs above)
+		exec 3<$td/dns
+		local addr
+		while read <&3 addr; do
+			probe-addr 'NONE' $addr
+		done
+		record-success dns
+		return
+		;;
+	[123])
+		local emsg
+		read <$td/dns emsg
+		record-tempfail dns "dns <no-mx> $emsg"
+		;;
+	*)
+		local emsg
+		read <$td/dns emsg
+		record-permfail dns "dns <no-mx> $emsg"
+		;;
+	esac
+}
+
+no_args () {
+	case $1 in
+	0) return ;;
+	*) fail "no arguments to $mode allowed" ;;
+	esac
+}
+
+acquire_lock () {
+	local lock_mode="$1"
+	if [ x"$WEBSTUMP_PROBE_LOCK" = x"$lockfile" ]; then return; fi
+	WEBSTUMP_PROBE_LOCK=$lockfile \
+	exec with-lock-ex $lock_mode "$lockfile" "$0" "$mode" "$@"
+}
+
+maybe-report () {
+	local outcome=$1
+
+	if $found_to_report; then return; fi
+	if ! [ -e "$attempt/$outcome" ]; then return; fi
+	found_to_report=true
+
+	read <"$attempt/$outcome" message
+
+	local reported
+	if [ -e "$attempt/reported" ]; then
+		read <"$attempt/reported" reported
+	fi
+	if [ "x$outcome" = "x$reported" ]; then return; fi
+
+	if [ x"$outcome" = x"ok" ] && [ x"$reported" = x ]; then
+		echo ok >"$attempt/reported"
+		return
+	fi
+
+	local info=${attempt##*/}
+	info=${info//,/ }
+
+	delim=`od -N 50 -An -x -w50 </dev/urandom`
+	delim=${delim// /}
+
+	local email="$attempt/.report.$outcome"
+	cat >"$email" <<END
+To: $ADMIN
+Subject: mod relay probe $outcome $info
+Content-Type: multipart/mixed; boundary="$delim"
+MIME-Version: 1.0
+
+--$delim
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+
+The moderation relay probe
+  $info
+END
+
+	if [ -e "$attempt/started" ]; then
+		local started
+		read started <"$attempt/started"
+		cat >>"$email" <<END
+started at
+  $started
+END
+	fi
+
+	cat >>"$email" <<END
+resulted in the outcome
+  $outcome
+END
+	if [ "x$message" != x ]; then
+		cat >>"$email" <<END
+with the message
+  $message
+END
+	fi
+
+	if [ "x$reported" != x ]; then
+		cat >>"$email" <<END
+This is even though previously the outcome seemed to be
+  $reported
+and this was reported previously.
+END
+	fi
+
+	cat >>"$email" <<END
+
+Logs are in
+  $attempt
+and concatenated to this email.
+
+END
+
+	local log
+	for log in "$attempt"/*; do
+		cat >>"$email" <<END
+--$delim
+Content-Type: text/plain; charset="utf-8"
+Content-Disposition: inline; filename="${log##*/}"
+Content-Description: "${log##*/}"
+Content-Transfer-Encoding: 8bit
+
+END
+		cat >>"$email" <"$log"
+		echo >>"$email"
+	done
+
+	cat >>"$email" <<END
+--$delim--
+END
+
+	/usr/sbin/sendmail -odb -oem -oee -t <"$email"
+	echo "$outcome" >"$attempt"/reported
+}
+
+mode_report () {
+	acquire_lock -w "$@"
+
+	local attempt
+	for attempt in $statedir/*; do
+
+		local now=$(date +%s)
+		local age=$(stat -c %Y "$attempt")
+		age=$(( $now - $age ))
+
+		local found_to_report=false
+		maybe-report ok
+		maybe-report permfail
+		maybe-report tempfail
+
+		if ! [ -e $attempt/reported ] && \
+		     [ $age -gt $PROBE_TIMEOUT ]; then
+			echo >"$attempt"/timeout \
+	"Message did not arrive after ${PROBE_TIMEOUT}s"
+		fi
+
+		maybe-report timeout
+
+		if [ -e $attempt/reported ] && \
+		   [ $age -gt $PROBE_EXPIRE ]; then
+			rm -rf "$attempt"
+		fi
+	done
+}
+
+mode_received () {
+	no_args $#
+
+	local hn group id domain mx addr
+	while read hn group id domain mx addr; do
+		if [ x"$hn" != x"X-WebSTUMP-Relay-Probe:" ]; then continue; fi
+		if [ x"$group" != x"$GROUP" ]; then continue; fi
+		case " $id $domain $mx $addr" in
+		*/*|' '.*)	fail "bad syntax" ;;
+		esac
+		local td
+		compute-td "mx=$mx,addr=$addr"
+		>"$td/ok" ||:
+		return
+	done
+}
+
+mode_all () {
+	no_args $#
+	for domain in $MODRELAYS; do
+		probe-domain $domain
+	done
+}
+
+mode_domain () {
+	for domain in "$@"; do
+		probe-domain $domain
+	done
+}
+
+mode=$1; shift||:
+
+"mode_$mode" "$@"

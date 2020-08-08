@@ -1,0 +1,8 @@
+#!/bin/sh
+
+# $Id: addKey,v 1.2 2007/05/03 23:47:11 rram Exp $
+# Modified to work with GPG
+
+PUBRING=$MNG_ROOT/data/pubring.gpg
+
+gpg --import --armor --no-default-keyring --keyring $PUBRING

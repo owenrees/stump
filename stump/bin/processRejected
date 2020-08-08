@@ -1,0 +1,67 @@
+#!/bin/bash
+#
+# This script takes a raw article that is already rejected, creates a 
+# reply message, signs it with PGP and sends back to the author.
+#
+
+set -e
+
+# echo $0 invoked with arguments $@ 1>&2
+
+MESSAGE=$TMP/rejected.$$
+
+shift; REASON="$1"; export REASON; shift 
+#EXPLANATION="$@"; export EXPLANATION
+
+echo Action: processRejected, reason=$REASON 1>&2
+
+cat  > $MESSAGE
+
+#save() { 
+#  procmail -p -f- $MNG_ROOT/etc/procmail/save-rejected < $MESSAGE
+#}
+
+reply() {
+
+  if [ "x$REASON" = xdiscard ]; then return; fi
+  (
+    eventheader="reject $REASON"
+    if [ "x$WEBSTUMP_MESSAGENUM" != x ]; then
+        eventheader="[$WEBSTUMP_MESSAGENUM] $eventheader"
+    fi
+    cat $MESSAGE | formail -rt -I "Reply-To: $BOARD" 	\
+			       -I "Errors-To: $MUNGED_ADDRESS"	 \
+        -I "X-Webstump-Event: $eventheader" \
+	$MAILOUT_REJECT_FORMAIL_ARGS
+    (
+      echo "$EXPLANATION"
+      echo
+
+      if [ "x$REASON" != "xcustom" ] ; then
+	cat $MNG_ROOT/etc/messages/$REASON
+      fi
+
+      echo ""
+      echo ============================================ Full text of your message follows
+      sanitise_and_quote_email \
+         < $MESSAGE
+    ) | gpg --clearsign --textmode --armor --batch --user "$PMUSER_APPROVAL" \
+         --passphrase "$PMPASSWORD" 2>/dev/null \
+  ) | sendmail -oi -t -f $MUNGED_ADDRESS
+}
+
+update_rejection_count() {
+  # don't count forgeries and signature mismatches against the victim
+  # also don't count thread rejections or duplicates
+  if [ "x$REASON" != "xforgery" -a "x$REASON" != "xsignature" -a "x$REASON" != "xthread" -a "x$REASON" != "xduplicate" -a "x$REASON" != "xcrosspost" -a "x$REASON" != "xempty" ]; then
+    cat $MESSAGE | updateActionCount.pl -r
+  fi
+}
+
+#save
+reply $1
+#update_rejection_count
+rm $MESSAGE
+
+#    ) | stump-pgp -staf -z "$PMPASSWORD" 	\
+#            -u "$ROBOMOD_APPROVAL" +clearsig=on  2>/dev/null	\

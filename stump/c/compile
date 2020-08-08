@@ -1,0 +1,13 @@
+#!/bin/sh
+
+# define your compiler
+CC=cc
+
+for i in checkquot antivirus cuthead isbinary; do
+  echo -n Compiling $i.c with $CC...
+  if $CC -o ../bin/$i $i.c; then
+    echo  done
+  else
+    echo ""
+  fi
+done

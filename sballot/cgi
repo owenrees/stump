@@ -1,0 +1,168 @@
+#!/usr/bin/perl -w
+
+use strict qw(refs vars);
+
+use CGI qw/:standard/;
+use Cwd qw/realpath/;
+
+BEGIN {
+    my $self= $ENV{'SCRIPT_FILENAME'};
+    $self= $0 unless defined $self;
+    $self= realpath $self;
+    my $sballotdir= $self;  
+    $sballotdir =~ s,/[^/]*$,,;
+
+    chdir $sballotdir or die "$sballotdir $!";
+    unshift @INC, "..";
+};
+
+use ModerationCommon;
+
+readsettings();
+
+sub fail ($) {
+    my ($m)= @_;
+    print header(-status=>500), start_html('Secret ballot - error'),
+        h1("error"), strong($m), end_html();
+    exit 0;
+}
+
+my $issueid= param('issue');
+fail('bad issueid') if $issueid =~ m/[^-0-9a-z]/ or $issueid =~ m/^[^0-9a-z]/;
+
+open T, "issues/$issueid/title" or fail("unknown issue $!");
+my $title= <T>;  chomp $title or die $!;
+my $regexp= <T>;  chomp $regexp or die $!;
+close T or die $!;
+
+my $vote= param('vote');
+my $ident= param('ident');
+my $pw= param('password');
+
+sub read_vfile ($) {
+    my ($vfile)= @_;
+    open M, $vfile or fail("unknown psuedonym $!");
+    my $m= <M>;  chomp $m or die $!;
+    close M or die $!;
+    
+    $m =~ m/^(\S+) (\S.*)$/ or die;
+    return ($1,$2);
+}
+
+sub issue_and_title () {
+    return (
+	dt('Issue ID'), dd(escapeHTML($issueid)),
+	dt('Title'), dd(escapeHTML($title))
+    );
+}
+
+if (length $vote or length $ident or length $pw) {
+    fail('bad pseudonym') if !defined $ident or $ident =~ m/[^0-9a-z]/;
+
+    fail('bad password') if !defined $pw or $pw =~ m/[^0-9a-z]/;
+    my $pwhash= hash($pw);
+
+    fail('bad vote') if $vote =~ m/[^0-9a-z]/i;
+    $vote =~ y/a-z/A-Z/;
+
+    fail("invalid vote - consult administrator's instructions")
+	unless $vote =~ /^(?:$regexp)$/io;
+
+    my $vfile= "issues/$issueid/v.$ident";
+    my ($exp_pwhash, $oldvote) = read_vfile($vfile);
+    $exp_pwhash eq $pwhash or fail("wrong password");
+    
+    open N, "> $vfile.new" or die $!;
+    print N "$pwhash $vote\n" or die $!;
+    close N or die $!;
+
+    rename "$vfile.new", $vfile or die "$vfile $!";
+
+    print(header(), start_html('Secret ballot - vote recorded'),
+	  h1('Vote recorded'), '<dl>',
+	  issue_and_title(),
+	  dt('Old vote'), dd($oldvote),
+	  dt('New vote'), dd($vote), '</dl>',
+	  end_html()) or die $!;
+    exit 0;
+}
+
+if (param('results') or param('email_results')) {
+    my $txt= <<END;
+The moderators' votes (so far) are as follows:
+END
+    foreach my $vfile (sort <issues/$issueid/v.*>) {
+	$vfile =~ m,/v\.([0-9a-f]+)([^/]*)$, or die;
+	next if $2 eq 'new';
+        die "$vfile $2" if length $2;
+	$ident= $1;
+	my ($dummy_pwhash, $vote) = read_vfile($vfile);
+	$txt .= " $ident $vote\n";
+    }
+    $txt .= <<END;
+
+See the email from the administrator for the meanings of the above
+votes.  There is no automatic counting; the above is just a list
+of the entries provided by the voting moderators.
+END
+
+    if (param('email_results')) {
+        sendmail_start();
+	print P <<END or die $!;
+To: $setting{ABBREV} moderators <$setting{MODEMAIL}>
+Subject: Secret ballot results for $setting{ABBREV}
+
+One of the moderators for $setting{GROUP}
+has requested that the results of the following ballot be sent out:
+  Issue ID: $issueid
+  Title: $title
+
+$txt
+
+Regards
+moderation system robot
+END
+        print(header(), start_html('Secret ballot - email sent'),
+	      h1('Done'),
+	      p('The email has been sent and should arrive shortly'),
+	      end_html())
+	    or die $!;
+        exit 0;
+    }
+    print(header(), start_html('Secret ballot - results'),
+	  h1('Results so far'),
+	  '<dl>',issue_and_title(),'</dl>',
+	  pre(escapeHTML($txt)),
+	  end_html())
+	or die $!;
+    exit 0;
+}
+
+print(header(), start_html('Secret ballot - voting page'),
+      h1('Instructions'),
+      p('Wait for the email from the administrator confirming '.
+	'that this is the actual live ballot before voting.  '.
+	"The administrator's email will tell you what to put in".
+	" the vote box."),
+      h1('Voting form'), '<dl>',
+      start_form(-method=>'POST'),
+      hidden('issue',$issueid),
+      issue_and_title(),
+      dt('Pseudonym'), dd(textfield(-name=>'ident', -size=>($hashlen+10))),
+      dt('Password'), dd(textfield(-name=>'password', -size=>($hashlen+10))),
+      dt('Vote'), dd(textfield(-name=>'vote', -size=>40)),
+      '</dl>',
+      submit('Cast your vote'),
+      end_form(),
+      h1('Results'),
+      p('This allows you to view the results (so far)'),
+      start_form(-method=>'GET'), hidden('issue',$issueid),
+      p(submit(-name=>'results',
+	       -value=>'Show results')),
+      p(submit(-name=>'email_results',
+	       -value=>"Send results to moderators' list")),
+      end_form(),
+      end_html())
+    or die $!;
+
+exit 0;

@@ -1,0 +1,44 @@
+.TH PMCANON 1 "PGP Moose"
+.\"@(#)pmcanon.1	1.3 (PGPMoose) 95/10/21
+.SH NAME
+pmcanon \- put a news article in canonical format
+for signature checking
+.SH SYNOPSIS
+.BI pmcanon [file] 
+.SH DESCRIPTION
+.I Pmcanon
+accepts an article from the named
+.I file
+(or standard input if not specified), selects
+certain of the header fields,
+and performs certain transformations intended to
+defeat unintentional mangling by news transport
+programs. The resulting article is written to
+standard output, and is suitable to have a PGP
+signature generated or checked for it.
+.LP
+The output produced consists (in order) of a sorted list,
+one per line, of newsgroups; the From:, Subject:,
+and Message-ID: lines, and the body of the
+article (everything after the first empty line).
+Other header lines are discarded.
+.LP
+The body is further processed by deleting all
+blank lines, deleting trailing whitespace on
+lines, prefixing lines beginning with "--",
+"From", "Subject", and a single "." with "-\ ",
+">", ">" and ".", respectively. These
+modifications are safe, in that an article which
+has already had such modifications will fail to
+meet the criterion to have them happen again.
+Thus what was used as input when a signature was
+generated should still be the same when checked
+for validity, even if some of these changes have
+happened along the delivery path.
+.\".SH FILES
+.SH SEE ALSO
+.IR pmapp (1),
+.IR pmcheck (1),
+PGP manual.
+.SH AUTHOR
+Greg Rose, RoSecure Software.

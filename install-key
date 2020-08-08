@@ -1,0 +1,24 @@
+#!/bin/bash
+set -e
+
+fail () { echo >&2 "fatal: $*"; exit 1; }
+
+. settings
+
+armorout=stump/etc/approval.key.txt
+if test -f $armorout; then exit 0; fi
+
+if [ x"`whoami`" != xwebstump ]; then fail "wrong user"; fi
+
+gpg --batch --gen-key - <<END
+%echo Generating key...
+Key-Type: RSA
+Key-Length: 2048
+Key-Usage: sign
+Name-Real: $GROUP approval key
+Name-Email: $MODEMAIL
+%commit
+%echo Key generated.
+END
+
+gpg --export --armor "$GROUP approval key <$MODEMAIL>" >$armorout

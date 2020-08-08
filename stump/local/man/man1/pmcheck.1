@@ -1,0 +1,83 @@
+.TH PMCHECK 1 "PGP Moose"
+.\"@(#)pmcheck.1	1.5 (PGPMoose) 95/11/15
+.SH NAME
+pmcheck \- check veracity and applicability of
+signatures in news articles.
+.SH SYNOPSIS
+.B pmcheck
+.I [newsgroups|user] [file] 
+.SH DESCRIPTION
+.I Pmcheck
+accepts an article from the named
+.IR file
+(or standard input if not specified),
+and performs certain checks against digital
+signatures present in X-Auth: headers
+in the news articles. There are two common modes
+of use
+of \f2pmcheck\fP, and these are described
+separately for simplicity, even though there is
+considerable ability to mix-and-match.
+.LP
+The first use is when a person is reading news,
+and sees an article and wishes to check whether
+the article is an approved posting to a moderated
+newsgroup, or an approved posting from a
+particular individual user. Piping the article
+through \f2pmcheck\fP will give a list of valid
+signatures (or signatures which couldn't be
+checked because corresponding PGP public keys
+were unavailable), and of course generate error
+messages for invalid signatures, which indicate
+either forged or altered articles. Any alteration
+might have been intentional, but bear in mind the
+possibility that an alteration could have been an
+artifact of the news system, despite precautions
+against this.
+.LP
+The second use, and the reason for the existence
+of the PGP Moose system, is when an article is
+automatically checked upon receipt by a
+designated news hub. In this case, a moderated
+newsgroup or user name (represented by an
+electronic mail address) will be specified, and
+it is considered an error if there is no
+corresponding X-Auth: header, or if for
+any reason it doesn't check out. Furthermore, there
+can be a configured file which lists pairs of
+newsgroup/user names, and corresponding PGP user
+IDs who are allowed to authorise such postings.
+Even a valid signature from an individual who is
+not listed in this file will be considered an
+error. All X-Auth: headers will be
+checked if their newsgroup/user name appears in
+the checking file, the only way in which the
+argument is special is that such a header for
+that newsgroup or user \f3must\fP appear.
+The intention is that any article which fails
+this authentication process will be reported to
+the user or newsgroup moderator(s), and might be
+automatically cancelled. This is to react quickly
+to spamming attacks on moderated newsgroups.
+.SH EXIT STATUS
+.I Pmcheck
+returns an exit status of 0 if everything is all right, and non-zero otherwise.
+In particular, an exit status of 1 means that the article was not
+approved with the PGP Moose when it should have been, and a status of
+2 is returned for all other authentication problems.
+.SH SEE ALSO
+.IR pmapp (1),
+.IR pmcanon (1)
+for a description of the fields which go into the
+signature calculation,
+the PGP User's Manual,
+the PGP Moose README file for an understanding of
+how it all hangs together.
+.SH BUGS
+Currently \f3pmcheck\fP always allows cancel
+messages to pass, despite the fact that
+\f3pmdaemon\fP always authenticates them. The
+potential consequences of an automated cancellation-war were
+simply too horrible to contemplate.
+.SH AUTHOR
+Greg Rose, RoSecure Software.

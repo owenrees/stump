@@ -1,0 +1,72 @@
+#!/usr/bin/perl
+
+$isEncoded = 0;
+$FullHeaders = "";
+$DecodedHeaders = "";
+$switch = "";
+$inctype = 0;
+
+while(<>) {
+  chop;
+
+  last if( /^$/ );
+
+  $FullHeaders .= "$_\n";
+
+  if ( /^\s+/ && $inctype ) {
+      next;
+  }
+
+  $inctype=0;
+
+  if( /^Content-Transfer-Encoding: BASE64/i ) {
+
+    $isEncoded = 1;
+    $switch = "-b"; # base64 - default
+
+  } elsif( /^Content-Transfer-Encoding: quoted-printable/i ) {
+
+    $isEncoded = 1;
+    $switch = "-q"; # quoted-printable
+
+  } elsif( /^Content-Type: /i ) {
+    $inctype = 1;
+
+  } elsif( ! /^Mime-Version: /i && ! /Content-Type: /i ) {
+    $DecodedHeaders .= "$_\n";
+  }
+}
+
+# body
+
+if( !$isEncoded ) {
+  print $FullHeaders . "\n";
+  while( <> ) {
+    print or die $!;
+  }
+  exit 0;
+}
+
+print $DecodedHeaders . "\n" or die $!;
+
+if( $ENV{'TMP'} ) {
+  $TmpFile = "$ENV{'TMP'}/letter.$$";
+} else {
+  $TmpFile = "/tmp/letter.$$";
+}
+
+open( DECODE, "|mimencode -u $switch > $TmpFile" ) 
+  || die "Can't run mmencode writing to $TmpFile";
+
+  while( <> ) {
+    print DECODE or die $!;
+  }
+close( DECODE ) or die "$? $!";
+
+open( DECODED, $TmpFile ) || die "Can't open just decoded file $TmpFile";
+  while( <DECODED> ) {
+    print or die $!;
+  }
+close( DECODED ) or die "$? $!";
+
+unlink( $TmpFile );

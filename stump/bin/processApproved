@@ -1,0 +1,109 @@
+#!/bin/bash
+
+set -ex
+set -o pipefail
+
+NEWSBIN=/var/lib/newsbin; export NEWSBIN
+shift
+DATE_STAMP="`date +%y%m%d%H%M%S`"
+
+TMPFILE=$TMP/pa.$DATE_STAMP.$$
+
+if [ $PGP = "none" ]; then
+  PMAPP_PROG=cat
+else
+  PMAPP_PROG="$PMAPP $NEWSGROUP"
+fi
+
+echo Action: processApproved 1>&2
+
+cat > $TMPFILE
+
+save() { 
+
+  ( 
+    cat $TMPFILE
+  ) | procmail -f- $MNG_ROOT/etc/procmail/save-approved
+}
+
+post() {
+  FAILED=$TMP/failed.$$
+  (
+    echo Path: "$PATH_SUFFIX"
+
+    perl <$MNG_ROOT/etc/added-headers -ne '
+        next unless m/\:/;
+        s/\[REFERENCE\]/[$ENV{"WEBSTUMP_MESSAGENUM"}]/g
+            if defined $ENV{"WEBSTUMP_MESSAGENUM"};
+        print or die $!;
+    '
+    # I do grep above because a lot of users inserts empty
+    # lines in the added headers.
+
+    cat $TMPFILE					\
+      | formail -f -a "Newsgroups: $NEWSGROUP"		\
+	    -I Path:					\
+            -I X-Moderate-For:                          \
+            -I Return-Path:                             \
+            -I X-Mailer:                                \
+            -I "X-400-Received:"                        \
+	    -I Received: -I "From " 			\
+	    -a "Approved: $PMUSER_APPROVAL"		\
+            -I Lines:                                   \
+            -I Cc:                                      \
+	    -I To: -I Status:				\
+	    -I "X-Delivered-To:"			\
+	    -I "X-Envelope-To:"				\
+	    -I "X-Forwarding-To:"			\
+	    -I "X-Gradwell-Mailfilter:"			\
+	    -I "Delivered-To:"				\
+	    -I "Envelope-To:"				\
+	    -I "X-Priority:"				\
+	    -I "X-Priority:"				\
+	    -I "X-Priority:"				\
+	    -I "X-MSMail-Priority:"			\
+	    -I "X-MimeOLE:"				\
+	    -I "X-RBL-Warning:"				\
+	    -I "X-Scanner:"				\
+	    -I "X-Spam-Checker-Version:"		\
+	    -I "X-Spam-Flag:"				\
+	    -I "X-Spam-Level:"				\
+	    -I "X-Spam-Report"				\
+	    -I "X-Spam-Score:"				\
+	    -I "X-Spam-Status:"				\
+	    -I "X-Scanned-By:"				\
+	    -I "X-Virus-Scanned:"			\
+	    -I "X-Virus-Status:"			\
+	    -I "X-Original-To:"				\
+	    -I "X-UID:"					\
+	    -I "Delivered-To:"				\
+	    -I "DomainKey-Signature:"			\
+	    -I "Thread-Index:"				\
+	    -I "X-X-Sender:"				\
+	    -I "X-PMX-Version:"				\
+
+    if [ -f $MNG_ROOT/etc/added-footer ] ; then
+      cat $MNG_ROOT/etc/added-footer
+    fi
+
+  )                                                     \
+    | $PMAPP_PROG					\
+    | tee $FAILED                                       \
+    | $RNEWS
+  if [ "$?" = "0" ] ; then
+    /bin/rm $FAILED
+  else
+    echo IHAVE failed. Look at $FAILED. 1>&2
+  fi
+}
+
+PMUSER="$PMUSER_APPROVAL"; export PMUSER
+ROBOMOD="$ROBOMOD_APPROVAL"; export ROBOMOD
+save
+post
+
+if needAck < $TMPFILE; then
+  modack.approved $TMPFILE
+fi
+
+rm $TMPFILE

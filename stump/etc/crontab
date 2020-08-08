@@ -1,0 +1,33 @@
+# This is a crontab file for your newsgroup. Crontab is a Unix table that
+# specifies when and which programs should be run at regular intervals.
+#
+# If you do not know what is cron and crontab, do not bother editing this 
+# file. It is not needed to provide the core functionality for your 
+# newsgroup.
+#
+# Its primary use is for regular cleanups, posting monthly summaries
+# of approved and rejected messages, and so on. You can set it up
+# later when the core of the STUMP functionality is working.
+#
+
+# Every sunday at midnight, create and compress an archive of approved
+# and rejected postings. Saves disk space.
+#
+0 0 * * sun  $HOME/stump/etc/modenv createArchive < /dev/null
+
+# every night send me the report about the number of articles
+# actually posted to the newsgroup. PLease replace "ichudov" with
+# your own email address, e.g. johndoe@yoursite.com
+#
+0 0 * * *   $HOME/stump/etc/posted_log ichudov < /dev/null > /dev/null 2>/dev/null
+
+# Every month on the 5th, post a neat summary of approved rejected
+# articles. 
+#
+5 0 1 * *   $HOME/stump/etc/modenv report.sh
+
+#
+# resubmit failed articles
+#
+10 * * * * $HOME/stump/etc/modenv submitFailed 2>/dev/null
+

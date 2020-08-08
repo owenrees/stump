@@ -1,0 +1,34 @@
+#!/bin/bash
+set -e
+
+. ./get-settings
+
+in=$BASEDIR/stump/etc/messages
+out=$BASEDIR/public-html/rejection-reasons
+
+exec 3<$BASEDIR/webstump/config/newsgroups/$GROUP/rejection-reasons
+
+mkdir -p $out
+
+install_rr () {
+	rm -f "$out/$1"
+	file="$out/$1.txt"
+	exec 4>"$file.new"
+	printf >&4 "%s - %s\n\n" "$1" "$2"
+	cat >&4 "$in/$1"
+	mv -f "$file.new" "$file"
+	touch "$out/.want.$1.txt"
+}
+
+install_rr "charter" "not in accordance with the charter"
+
+while read line <&3; do
+	install_rr "${line%%::*}" "${line#*::}"
+done
+
+cd $out
+for was in *.txt; do
+	if ! test -f ".want.$was"; then
+		rm "$was"
+	fi
+done

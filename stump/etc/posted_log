@@ -1,0 +1,26 @@
+#!/bin/bash
+
+set -e
+
+# This file creates a little .posted_log file in your home 
+# directory. Runs if activeated by crontab. See your crontab
+# file for more details. 
+
+# You may omit this file when initially setting up STUMP.
+
+(
+  echo -n `date` "Number of articles: "
+  grep processApproved < $HOME/Mail/from | wc -l
+) >> $HOME/.posted_log
+
+(
+cat << _EOB_
+The information below shows the total number of articles posted
+for the last 10 days. The totals start with some date in the past.
+What is important is daily differences between totals.
+
+_EOB_
+
+tail $HOME/.posted_log
+
+)| mail -s "Number of posted Articles" $1

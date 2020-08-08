@@ -1,0 +1,23 @@
+#!/bin/bash
+set -e
+# To set up a new newsgroup, run this script.
+#
+# Some things are idempotent, others are once-only.
+
+x () {
+	echo "==== $* ===="
+	"$@"
+}
+
+x ./install-key
+x ./install-newsgroup
+x ./install-substitutions
+x make -C webstump
+x ./install-aggregates
+x ./install-weblinks
+x ./install-rejectionreasons
+x ./install-loggroups
+
+echo ==== DONE ====
+
+x cat README.auto

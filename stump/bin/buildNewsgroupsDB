@@ -1,0 +1,15 @@
+#!/usr/bin/perl
+
+$DataDir = $ENV{'MNG_ROOT'} . "/data";
+$NewsgroupsDBFile = "$DataDir/Newsgroups";
+
+# Open message-ID database
+dbmopen( %NewsgroupsDB, "$NewsgroupsDBFile", 0644 );
+
+
+while( <> ) {
+  ($group, $q1, $q2, $flag) = split;
+  $NewsgroupsDB{$group} = $flag;
+}
+
+print "test: $NewsgroupsDB{'soc.culture.russian'}.\n"

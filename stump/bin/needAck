@@ -1,0 +1,71 @@
+#!/usr/bin/perl
+#
+
+$MNG_ROOT = $ENV{'MNG_ROOT'} || die "Root dir for moderation not specified";
+
+require "$MNG_ROOT/bin/robomod.pl";
+
+###################################################################### checkAck
+# checks if poster needs ack
+sub checkAck {
+
+  my $fromaddr = $From;
+  $fromaddr =~ s/^[-A-Za-z]+\s*\:\s*//;
+  $needAck = ! &nameIsInListExactly( $fromaddr, "noack.list" );
+
+}
+
+
+######################################################################
+# Getting data
+sub readMessage {
+
+  $IsBody = 0;
+  
+  while( <> ) {
+    $Body .= $_;
+
+    chop;
+  
+    if( /^$/ ) {
+      $IsBody = 1;
+    }
+  
+    if( !$IsBody ) {
+  
+      if( /^Newsgroups: / ) {
+        $Newsgroups = $_;
+        $Newsgroups =~ s/^Newsgroups: //i;
+      } elsif( /^Subject: / ) {
+        $Subject = $_;
+      } elsif( /^From: / ) {
+        $From = $_;
+      } elsif( /^Path: / ) {
+        $Path = $_;
+      } elsif( /^Keywords: / ) {
+        $Keywords = $_;
+      } elsif( /^Summary: / ) {
+        $Summary = $_;
+      } elsif( /^Message-ID: / ) {
+        $Message_ID = $_;
+      }
+  
+    }
+  }
+
+  close( TMPFILE );
+}
+
+######################################################################
+# read the thing
+&readMessage();
+
+######################################################################
+# process acks
+&checkAck;
+
+if( $needAck ) {
+  exit 0;
+} else {
+  exit 1;
+}

@@ -1,0 +1,65 @@
+#!/bin/bash
+set -e
+
+if [ "x$1" = "x-n" ]; then
+        diffonly=1; diffsparse=0; shift
+elif [ "x$1" = "x-nq" ]; then
+        diffonly=1; diffsparse=1; shift
+else
+        diffonly=0; diffsparse=-1
+fi
+
+if [ $# != 0 ]; then echo >&2 "usage: ./${0##*/} [-n]"; exit 1; fi
+
+. ./get-settings
+
+if [ x"`whoami`" != x"$OURUSER" ]; then
+	echo >&2 "$0 must be run as $OURUSER, skipping"
+	exit 0
+fi
+
+# procmail insists on g-w
+umask 022
+
+find -name '*.IN[O1]' ! -path '*/skeleton/*' -exec perl -e '
+	use IO::Handle;
+	use POSIX;
+	my $f= shift;
+	my $d= $f;
+	$d =~ s/\.IN([O1])$//;
+	my $overwrite= ($1 eq 'O');
+	my $g= "$d.new";
+	open F, "< $f" or die "$f $!";
+	open G, "> $g" or die "$g $!";
+	stat F or die "$f $!";
+	my $mode= (stat F)[2];
+	while (<F>) {
+		s/\%(\w+)\%/ 
+			exists($ENV{$1}) ? $ENV{$1} : die "$1 undef at $f:$.\n"
+		 /ge;
+		print G or die $!;
+	}
+	F->error and die $!;
+	close G or die $!;
+	if ($mode & 01) {
+		chmod 0755, $g or die "$g $!";
+	}
+	close F or die $!;
+        if ('$diffonly') {
+                if (!-f $d) {
+                        print "Would create $d\n";
+                } elsif ('$diffsparse' && !$overwrite) {
+                        print "Not reporting on $d as would not overwrite.\n";
+                } else {
+                        system "diff -u $d $g";
+                }
+        } elsif ($overwrite) {
+		rename $g, $d or die "$g $d $!";
+	} else {
+		if (link $g, $d) {
+			unlink $g or die $!;
+		} else {
+			die "$g $d $!" unless $!==&EEXIST;
+		}
+	}
+' '{}' \;

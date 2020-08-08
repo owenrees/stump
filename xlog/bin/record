@@ -1,0 +1,198 @@
+#!/usr/bin/perl -w
+
+use strict (qw(vars));
+use IO::Handle;
+use POSIX;
+
+our %f;
+
+my $publish_rejections_patfile= '/dev/null';
+my $publish_rejections= 0;
+
+for (;;) {
+    last unless @ARGV;
+    last unless $ARGV[0] =~ m/^-/;
+    $_ = shift @ARGV;
+    last if m/^--?$/;
+    while (m/^-./) {
+	if (s/^-P(.*)$//) {
+	    $publish_rejections= 1;
+	    $publish_rejections_patfile= $1 if length $1;
+	} else {
+	    die "bad option $_ ?";
+	}
+    }
+}
+
+our ($how) = @_;
+
+my $dir= $0;
+$dir =~ s,/[^/]+$,,;
+$dir =~ s,/bin$,/log,;
+$dir .= "/$ARGV[1]";
+
+my $message;
+
+sub parse__headerline () {
+    $f{Subject}= $' if m/^Subject:\s*/i; #';
+    $f{MessageID}= $' if m/^Message\-ID:\s*/i; #';
+    $f{From}= $' if m/^From:\s*/i; #';
+}
+sub parse__stumpsubject () {
+    $f{MessageNum}=$1 if m/^Subject:.*\:\:\w+\/(\d+)$/i;
+}
+
+sub parse_posted () {
+    while (<STDIN>) {
+	chomp;
+	parse__headerline();
+	last if m/^$/;
+    }
+    $f{Event}= 'post';
+}
+sub parse_submission () {
+    my $hadng=0;
+    my %oldf;
+    my $had2=0;
+    while (<STDIN>) {
+	chomp;
+print STDERR "$hadng $had2|$_|\n";
+	$hadng++ if m/^Newsgroups:/i;
+	if (m/^$/) {
+	    last if $hadng;
+	    last if $had2++;
+	    %oldf= %f;
+	    undef %f;
+	}
+	last unless m/^\S+\:|^\s|^$|^From /;
+	parse__headerline();
+    }
+    if ($hadng) {
+	$f{Event}= $had2 ? 'receive newstyle' : 'receive';
+    } else {
+	%f= %oldf if $had2;
+	$f{Subject}= '[suppressed]';
+	$f{Event}= 'receive junk';
+    }
+}
+
+sub parse_stump2webstump () {
+    while (<STDIN>) {
+	chomp;
+	parse__stumpsubject() unless exists $f{'MessageNum'};
+	last if m/^\@{40,}$/;
+    }
+    while (<STDIN>) {
+	chomp;
+	last if m/^$/;
+	parse__headerline();
+    }
+    $f{Event}= 'enqueue';
+}
+
+sub parse_webstump2stump () {
+    while (<STDIN>) {
+	chomp;
+	parse__stumpsubject();
+	last if m/^$/;
+    }
+    my $cathow = '';
+    while (<STDIN>) {
+	chomp;
+	if (m/^\#( \w+.*)$/) {
+	    $cathow = $1;
+	}
+	next unless m/^reject|^approve|^preapprove/;
+	$f{Event}= $_.$cathow;
+	last;
+    }
+}
+
+sub parse_mailout () {
+    my $keepheader= 1;
+    while (<STDIN>) {
+	$keepheader= 1 unless m/^[ \t]/;
+	$keepheader= 0
+	    if m/^(?: received
+		   | envelope-to
+		   )/ix;
+	$keepheader= 'mangle'
+	    if m/^(?: to
+		   | from
+		   | return-path
+		   | reply-to
+		   | errors-to
+		   )/ix;
+	if ($keepheader) {
+	    my $line= $_;
+	    $line =~ s/\@.{0,2}/ at ../g if $keepheader eq 'mangle';
+	    $message .= $line;
+	}
+	chomp;
+        if (m/^X-Webstump-Event:\s*(?:\[(\d+)\])?\s*/i) { #';
+            $f{Event}= "notify $'";
+            $f{MessageNum}= $1 if defined $1;
+        }
+	last if m/^$/;
+    }
+    while (<STDIN>) {
+	$message .= $_;
+	chomp;
+	next unless s/^\> //;
+	last if m/^$/;
+	parse__headerline();
+    }
+}
+
+$f{Event}= '?';
+&{"parse_$ARGV[0]"};
+while (<STDIN>) { $message .= $_; }
+STDIN->error and die $!;
+
+$f{Now}= time;
+
+sub want_publish_rejection_kind ($) {
+    my ($kind) = @_;
+    return 1 if $publish_rejections_patfile eq '';
+    if (!open PF, '<', $publish_rejections_patfile) {
+	return 1 if $!==&ENOENT;
+	die "$publish_rejections_patfile: $!";
+    }
+    while (<PF>) {
+	s/^\s+//;
+	s/\s+$//;
+	next if m/^\#/;
+	next unless m/\S/;
+	my $yn = !s/^\!//;
+	s/[^0-9a-zA-Z*?]/\\$&/g;
+	s/\*/.*/g;
+	s/\?/./g;
+        return $yn if $kind =~ m/^$_$/;
+    }
+    close PF or die $!;
+    return 1;
+}
+
+if ($publish_rejections &&
+    $f{Event} =~ m/^notify reject (\S+)/ &&
+    want_publish_rejection_kind($1))
+{
+    $f{CopyRef}= $f{MessageNum} || $f{MessageID};
+    $f{CopyRef} =~ s/\W/ sprintf '-%02x', ord($&) /ge;
+    open I, ">$dir/public/nr-$f{CopyRef}.txt" or die $!;
+    print I $message or die $!;
+    close I or die $!;
+}
+
+open L, ">>$dir/event.log" or die $!;
+
+my @s= map {
+    my $v= $f{$_};
+    $v= '' unless defined $v;
+    $v =~ s/\t/  /g;
+    $v =~ s/[\r\n]/?/g;
+    $v;
+} qw(Now MessageNum MessageID From Subject Event CopyRef);
+
+print L join("\t",@s)."\n" or die $!;
+close L or die $!;

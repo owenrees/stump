@@ -1,0 +1,32 @@
+#!/bin/bash
+#
+# This script sends an email to a group of people listed in
+# env var RECIPIENTS (we create this var here from etc/moderators)
+#
+# It is used to maintain the little internal mailing list for all
+# human moderators of your newsgroup.
+#
+
+set -e
+set -o pipefail
+
+FILTER="NO_$2_LIST";
+
+RECIPIENTS="`cat $MNG_ROOT/etc/moderators \
+	     | grep -v "$FILTER"               \
+             | grep -v '^#'               \
+             | awk '{print $1;}'          \
+             | tr '\n' ',' `"
+
+(
+     formail                                                            \
+       -I "To: discard-all@chiark.greenend.org.uk"			\
+       -I "From " -I "Cc:"                                              \
+       -I "X-Loop: $BOARD"                            			\
+       -I "X-Mailing-List: $BOARD ($NEWSGROUP Moderators)" 		\
+       -I "Reply-To: $1"                          	                \
+       -I "Resent-To:"							\
+       -I "X-Maintainer: $ADMIN"    					\
+       -I "Errors-To: $ADMIN"
+     cat $MNG_ROOT/etc/mods.sig
+) | sed 's/^\.$/\.\./' | sendmail $RECIPIENTS

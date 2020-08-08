@@ -1,0 +1,167 @@
+#!/usr/bin/perl -w
+
+use strict (qw(vars));
+use IO::Handle;
+use POSIX;
+use CGI qw/:standard *table end_* -no_xhtml/;
+
+our $timesquash = 3;
+# no. of digits at end of time to replace with x, 0..4
+our %reasonshow = qw(approve 1 reject 1);
+# no. of words to show
+
+for (;;) {
+    last unless @ARGV;
+    last unless $ARGV[0] =~ m/^-/;
+    $_ = shift @ARGV;
+    last if m/^--?$/;
+    while (m/^-./) {
+	if (s/^-t([0-4])/-/) {
+	    $timesquash= $1;
+	} elsif (s/^-r(\w+)=(\d)$//) {
+	    $reasonshow{$1}= $2;
+	} else {
+	    die "bad option $_ ?";
+	}
+    }
+}
+
+our ($ng,$staticfiles,@ARGV) = @ARGV;
+chdir $ng or die $!;
+
+our @lines= ();
+our @s;
+our $oddeven = "o";
+
+our ($processline,$needmap);
+our ($selectmid,$selectnum);
+
+sub processlog ($$) {
+    my ($taccat, $fn)= @_;
+    open F, "$taccat $fn |" or die $!;
+    while (<F>) {
+	chomp;
+	@s= split /\t/;
+	push @s, '' if @s<=6;
+        $s[0]= strftime "%Y-%m-%d %H:%M:%S %Z", localtime $s[0];
+	for (my $i=0; $i<$timesquash; $i++) {
+	    $s[0] =~ s/(\d\d:[\d:]*)\d/$1x/;
+        }
+	$s[0] =~ s/:xx / /;
+	&$processline();
+	$oddeven =~ y/oe/eo/;
+    }
+}
+sub processlogs ($) {
+    my ($taccat) = @_;
+    my (@logs) = qw(event.log.0 event.log);
+    @logs= reverse @logs if $taccat eq 'tac';
+    processlog($taccat, $_) foreach @logs;
+}
+
+sub processline_print () {
+    my @sp= @s;
+    $sp[3] =~ s/\@\w{0,2}/ at .. /;
+    @sp= map { escapeHTML($_) } @sp[0..5];
+    $sp[3] =~ s/&lt;/\<br>&lt;/;
+    $sp[2]=~s/\@/\@<span class='hole'><\/span>/;
+    my @spu= map {
+	s/\W/ sprintf "%%%02x", ord $& /ge;
+	$_;
+    } @s;
+    if (length $s[1] && length $s[2]) {
+	my $url= url().'/message/'.$spu[1].'/'.$spu[2];
+	foreach my $i (qw(1 2)) {
+	    $sp[$i]= a({ href=>$url }, $sp[$i]."<br>" );
+	}
+    }
+    if (length $s[6]) {
+	$sp[5]= a({ href=>"$staticfiles/nr-$s[6].txt" }, $sp[5] );
+    }
+
+    if ($sp[5] =~ m/^\w+\b/ &&
+	defined (my $reasonshow= $reasonshow{$&})) {
+	my @reas= split /\s+/, $sp[5];
+	$reasonshow--;
+	$#reas = $reasonshow if $#reas > $reasonshow;
+	$sp[5] = join ' ', @reas;
+    }
+
+    print "<tr class='$oddeven'><td>$sp[0]</td>";
+    print "<td class='ref'>$sp[1] $sp[2]</td>";
+    print td([@sp[3..5]]),"</tr>\n";
+}
+
+sub processline_print_ifsingle () {
+    return unless $s[1] eq $selectnum
+	       or $s[2] eq $selectmid;
+    processline_print();
+}
+
+our (%done_num,%done_id,%num2id,%id2num);
+sub processline_queue_prescan () {
+    my ($num,$id,$e) = @s[1..2,5];
+    if (length $id and length $num) {
+	$id2num{$id}= $num;
+	$num2id{$num}= $id;
+    }
+    return unless $e =~ m/^decide reject discard|^notify reject|^post/;
+#print STDERR "finishing $e $s[1] $s[2]\n";
+    $num= $id2num{$id} if !length $num;
+    $id= $num2id{$num} if !length $id;
+#print STDERR "finishing $e $num $id\n";
+    $done_num{$num}++ if defined $num;
+    $done_id{$id}++ if defined $id;
+}
+sub processline_queue () {
+    return if $done_num{$s[1]};
+    return if $done_id{$s[2]};
+    processline_print();
+}
+
+my $pi= path_info();
+our $title;
+
+$needmap= 0;
+$processline= \&processline_print;
+
+if ($pi =~ m,^/message/(\d+)/(.*)$,) {
+    ($selectnum, $selectmid) = ($1,$2);
+    $title= "Single message ".escapeHTML($selectmid);
+    $processline= \&processline_print_ifsingle;
+} elsif ($pi =~ m/^$/) {
+    $title= "Recent activity - $ng";
+} elsif ($pi =~ m,^/queue,) {
+    $title= "Activity regarding still-queued messages";
+    $processline= \&processline_queue_prescan;
+    processlogs('cat');
+    $processline= \&processline_queue;
+}
+
+my $css=<<EOJ;
+span.hole:before { content: " "; }
+td.ref { font-size: 0.75em; }
+tr.o { background: #ddddff; }
+EOJ
+
+print header(),
+  start_html(-title=>$title, -style=>{'-code'=>$css}),
+  h1($title), start_table();
+
+print Tr(td([map { strong($_) } (qw(
+				Date
+				Reference/Message-ID
+				From
+				Subject
+				Event
+			    ))]));
+
+processlogs('tac');
+
+print end_table();
+print p();
+
+print a({ href=>url() }, "All recent activity"), '; ';
+print a({ href=>url().'/queue' }, "Unfinished business");
+
+print end_html();
