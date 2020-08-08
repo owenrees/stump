@@ -772,6 +772,7 @@ sub html_newsgroup_management {
     <OPTION VALUE=watch.subjects.list>Suspicious Subjects List
     <OPTION VALUE=bad.subjects.list>Banned Subjects List
     <OPTION VALUE=watch.words.list>Suspicious Words List
+    <OPTION VALUE=watch.unquoted.words.list>Suspicious Unquoted Words List
     <OPTION VALUE=bad.words.list>Banned Words List
 
   </SELECT>

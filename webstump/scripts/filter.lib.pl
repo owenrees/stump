@@ -79,6 +79,139 @@ sub name_is_in_list { # address, listname
 }
 
 ######################################################################
+# checks the string matches one of the patterns in the named list. The
+# list is a file of patterns, one per line that are matched as regexps
+# against the supplied string. If the line containing the match is
+# quoted from an approved post to the specified newsgroup then the
+# match is ignored.
+#
+# Arguments: string, newsgroup, listname
+# Result: matched items joined with commas (true) or empty string if no
+#         matches survived the filter.
+
+sub name_is_in_list_unquoted {
+  my ($string, $newsgroup, $listName) = @_;
+  my $item = "";
+  my $lines = {};
+  my %unquoted = ();
+  my $archivedir = "$webstump_home/../archive";
+
+  open( LIST, &full_config_file_name( $listName ) ) || return "";
+
+  while( $item = <LIST> ) {
+
+    chomp $item;
+
+    next unless $item =~ /\S/;
+    next if $item =~ /^\s*\#/;
+
+    # Catch failures caused by bad $item values, ignoring that item
+    eval {
+      # capture all the lines containing a watched word for filtering later
+      while( $string =~ /^(?<quote>(?:>[ ]?)*)\s*(?!>)(?=\S)(?<line>.*$item(?:.*\S)?)\s*$/img ) {
+        # All the '>' or '> ' quote markers have been stripped from the front of the line as has
+        # leading and trailing whitespace.
+        # We require at least one quote but we lose the ability to check quote depth here.
+        printf STDERR "Matched $item in '%s' '%s'\n", $+{quote} || "", $+{line};
+        if ($+{quote}) {
+          $lines->{$+{line}}->{$item} = 1;
+        } else {
+          $unquoted{$item} = 1;
+        }
+      }
+    }
+  }
+
+  close( LIST );
+  # Search the archive of approved messages and remove lines that match
+  # lines in approved posts. Check the live archive and the latest old archive.
+  if(scalar(keys(%$lines))) {
+    remove_matching_lines($newsgroup, $lines, "<", "$archivedir/approved");
+  }
+  if(scalar(keys(%$lines))) {
+    remove_matching_lines($newsgroup, $lines, "-|", "zcat $archivedir/old/approved.current");
+  }
+  # deduplicate the list of items that were found.
+  foreach my $v (values(%$lines)) {
+    foreach my $k (keys(%$v)) {
+      $unquoted{$k} = 1;
+    }
+  }
+  my $Result = join(',', sort(keys(%unquoted)));
+  return $Result ;
+
+}
+
+######################################################################
+# Searches the specified file for lines that match the set provided
+# removing any that are found in posts to the specified group. The file
+# is in mbox format containing multiple messages.
+
+sub remove_matching_lines {
+  my ($newsgroup, $lines, $openmode, $file) = @_;
+  my %message = ();
+  # print STDERR "Removing lines found in $file\n";
+  # If the file cannot be opened just do nothing
+  my $opened = open(my $fh, $openmode, $file);
+  if (!$opened) {
+    # Expected if archive has just been rotated or has never
+    # been rotated - file does not exist.
+    print STDERR "Failed: open $openmode $file $!\n";
+    return;
+  }
+  while (my $line = <$fh>) {
+    chomp $line;
+    if ( $line =~ m/^From /) {
+      # We should not get a header continuation line before the first
+      # header but if we do it is captured in $message{' '}
+      %message = (':', ' ');
+      next;
+    }
+    # Process the headers looking for newsgroups and message-id
+    if (!$message{body}) {
+      # Match a header line capturing hader name and content with leading and
+      # trailing whitespace stripped
+      if ($line =~ m/(?<header>[^\s:]+:)\s*(?<content>(?:\S(?:.*\S)?)?)\s*$/) {
+      	my $header = lc($+{header});
+        $message{':'} = $header;
+        $message{$header} = $+{content};
+        next;
+      }
+      # Deal with header continuation line including whitespace only
+      if ($line =~ m/^\s+(?<continued>(?:\S(?:.*\S)?)?)\s*$/) {
+        $message{$message{':'}} .= $+{continued};
+        next;
+      }
+      # blank line signals end of headers
+      if ($line =~ m/^$/) {
+        # is the message in the group we want?
+        if ($message{"newsgroups:"} =~ m/(?:^|,)\Q$newsgroup\E(?:,|$)/) {
+          $message{thisgroup} = 1;
+        }
+        $message{body} = 1;
+        next;
+      }
+    } else {
+      # just skip the body if in the wrong group
+      if (!$message{thisgroup}) {
+        next;
+      }
+      # See note above: $lines contains lines with all leading '>' stripped
+      # and also leading and trailing whitespace stripped.
+      # Do the same to the line we are processing
+      $line =~ m/^(?<quote>(?:>[ ]?)*)\s*(?!>)(?=\S)(?<line>\S(?:.*\S)?)\s*$/im;
+      # delete the entry - does nothing if it is not there
+      my $deleted = delete($lines->{$+{line}});
+      # printf(STDERR "Delete line %s '%s'\n", $deleted ? 'Y' : 'N', $+{line});
+      if (!keys(%{$lines})) {
+        # No lines left check so we can stop here.
+        last;
+      }
+    }
+  }
+  close $fh;
+}
+######################################################################
 # reviews incoming message and decides: approve, reject, keep
 # in queue for human review
 #
@@ -132,6 +265,12 @@ print STDERR "Filing Article for review because subject '$subject' matches '$mat
   if( $match = &name_is_in_list( $message, "watch.words.list" ) ) {
     &append_to_file( $warning_file, "Warning: article matches '$match' from the list of suspicious words\n" );
 print STDERR "Filing Article for review because article matches '$match'\n";
+    return; # file message
+  }
+
+  if( $match = &name_is_in_list_unquoted( $message, $newsgroup, "watch.unquoted.words.list" ) ) {
+    &append_to_file( $warning_file, "Warning: article matches '$match' from the list of suspicious words outside a quote from an approved article.\n" );
+print STDERR "Filing Article for review because article matches '$match' unquoted\n";
     return; # file message
   }
 

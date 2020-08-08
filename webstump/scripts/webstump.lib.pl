@@ -403,7 +403,8 @@ sub check_config_list {
         && $list_to_edit ne "watch.subjects.list"
         && $list_to_edit ne "bad.subjects.list"
         && $list_to_edit ne "bad.words.list"
-        && $list_to_edit ne "watch.words.list" );
+        && $list_to_edit ne "watch.words.list"
+        && $list_to_edit ne "watch.unquoted.words.list" );
 
   return &untaint( $list_to_edit );
 }
