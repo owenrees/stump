@@ -208,10 +208,10 @@ sub html_moderate_article {
   my $dir = "$queues_dir/$newsgroup";
 
   if( -d "$dir/$file" && open( TEXT_FILES, "$dir/$file/text.files.lst" ) ) {
-
+      my $highlight_re = make_re_from_lines(&article_file_name( $file ) . "/stump-highlight.txt");
       print "<HR>\n" if &print_article_warning( $file );
 
-      print "<PRE>\n";
+      print qq{<div style="white-space: pre; font-family: monospace;">\n};
       my $filename;
       my $inhead= 1;
       while( $filename = <TEXT_FILES> ) {
@@ -222,6 +222,7 @@ sub html_moderate_article {
           s/</&lt;/g;
           s/>/&gt;/g;
 	  $_= "<strong>$_</strong>" if $embolden;
+	  s{($highlight_re)}{<span style="color: red;">$1</span>} if $highlight_re;
           print;
 	  $inhead= 0 unless m/\S/;
         }
@@ -229,7 +230,7 @@ sub html_moderate_article {
 	$inhead= 0;
       }
 
-      print "\n</PRE>\n\n";
+      print "\n</div>\n\n";
 
       &print_images( $newsgroup, "$dir/$file", $file);
 
@@ -417,6 +418,7 @@ sub print_images {
 	      || $filename eq "text.files.lst"
 	      || $filename eq "stump-prolog.txt"
 	      || $filename eq "stump-warning.txt"
+	      || $filename eq "stump-highlight.txt"
 	      || $filename =~ /msg-.*\.doc/;
       
       &print_image( "no_image.gif", "security warning" );
@@ -424,6 +426,19 @@ sub print_images {
     }
   }
   return $count;
+}
+
+# create a regular expression that will match any of the paterns in the file
+sub make_re_from_lines {
+  my ($file) = @_;
+  if ( -r $file) {
+    open(my $fh, "<", $file);
+    chomp(my @lines = <$fh>);
+    close $fh;
+    my @groups = map {$_ ? "(?:$_)" : ()} @lines;
+    return join('|', @groups);
+  }
+  return '';
 }
 
 # prints warning if there is warning stored about the article
@@ -570,9 +585,10 @@ queue.\n";
 
         &print_article_warning( $file );
 
-        print "<PRE>\n";
+        print qq{<div style="white-space: pre; font-family: monospace;">\n};
 
         my $i = 0;
+        my $highlight_re = make_re_from_lines(&article_file_name( $file ) . "/stump-highlight.txt");
 
         while( ($_ = <PROLOG>) && $i < 5 ) {
             chop;
@@ -581,12 +597,16 @@ queue.\n";
             s/</&lt;/g;
             s/>/&gt;/g;
             if( $_ ne "" ) {
-              print "]  " . substr( $_, 0, 75 ) . "\n";
+              my $s = substr( $_, 0, 75 );
+              if ($highlight_re) {
+                $s =~ s{($highlight_re)}{<span style="color: red;">$1</span>};
+              }
+              print "]  $s\n";
               $i++;
             }
         }
 
-        print "</PRE>";
+        print "</div>";
         $form_not_empty = "yes";
         close( PROLOG );
         $article_count += &print_images( $newsgroup, "$dir/$subdir", $subdir );

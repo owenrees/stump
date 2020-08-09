@@ -137,9 +137,7 @@ sub name_is_in_list_unquoted {
       $unquoted{$k} = 1;
     }
   }
-  my $Result = join(',', sort(keys(%unquoted)));
-  return $Result ;
-
+  return sort(keys(%unquoted));
 }
 
 ######################################################################
@@ -246,6 +244,7 @@ sub review_incoming_message { # Newsgroup, From, Subject, RealSubject, Message, 
   }
 
   my $warning_file = &article_file_name( $dir ) . "/stump-warning.txt";
+  my $highlight_file = &article_file_name( $dir ) . "/stump-highlight.txt";
   my $match;
 
   $ignore_demo_mode = 1;
@@ -268,9 +267,11 @@ print STDERR "Filing Article for review because article matches '$match'\n";
     return; # file message
   }
 
-  if( $match = &name_is_in_list_unquoted( $message, $newsgroup, "watch.unquoted.words.list" ) ) {
+  if( my @matches = &name_is_in_list_unquoted( $message, $newsgroup, "watch.unquoted.words.list" ) ) {
+    my $match = join(',', @matches);
     &append_to_file( $warning_file, "Warning: article matches '$match' from the list of suspicious words outside a quote from an approved article.\n" );
 print STDERR "Filing Article for review because article matches '$match' unquoted\n";
+    &append_to_file( $highlight_file, join("\n", @matches));
     return; # file message
   }
 
