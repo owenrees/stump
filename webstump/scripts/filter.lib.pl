@@ -267,8 +267,8 @@ print STDERR "Filing Article for review because article matches '$match'\n";
     return; # file message
   }
 
-  if( my @matches = &name_is_in_list_unquoted( $message, $newsgroup, "watch.unquoted.words.list" ) ) {
-    my $match = join(',', @matches);
+  my @matches = &name_is_in_list_unquoted( $message, $newsgroup, "watch.unquoted.words.list" );
+  if( my $match = join(',', @matches) ) {
     &append_to_file( $warning_file, "Warning: article matches '$match' from the list of suspicious words outside a quote from an approved article.\n" );
 print STDERR "Filing Article for review because article matches '$match' unquoted\n";
     &append_to_file( $highlight_file, join("\n", @matches));
