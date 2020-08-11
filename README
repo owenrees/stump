@@ -1,0 +1,11 @@
+This is a clone of one of the versions of stump/webstump as used in the uk.*
+hierarchy.
+
+License: GPL v2 - see stump/LICENSE and webstump/LICENSE
+
+This code is probably based on v2.0 of stump/webstump but has been extensively
+modified since then.
+
+This repository was set up in response to a discussion in uk.net.news.moderation
+about issues with the modbot. It is primarily a place for those who run the
+systems in the uk.* hierarchy to review and adopt or adapt proposed changes.
